@@ -1,0 +1,9 @@
+rootProject.name = 'open-integration-engine'
+
+include 'client'
+include 'command'
+include 'donkey'
+include 'generator'
+include 'manager'
+include 'server'
+include 'webadmin'
