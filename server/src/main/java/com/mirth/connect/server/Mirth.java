@@ -550,6 +550,7 @@ public class Mirth extends Thread {
         );
         logger.info("This product was developed by NextGen Healthcare (https://www.nextgen.com) and its contributors (c)2005-2024.");
         logger.info("Open Integration Engine contributors (c)2025.");
+        logger.info("OpenShare Engine (c)2026 Saga IT, LLC. Built on Open Integration Engine (https://openshare.health).");
         logger.info(
             "Running {} {} on {} ({}, {}), {}, with charset {}.",
             System.getProperty("java.vm.name"),

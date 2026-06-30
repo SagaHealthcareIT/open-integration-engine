@@ -1,0 +1,13 @@
+<svg viewBox="0 0 292 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="OpenShare">
+  <!-- Horizontal lockup for DARK backgrounds (light wordmark + lightened mesh).
+       Wordmark uses Space Grotesk where available, else system sans. -->
+  <g transform="translate(0 8) scale(0.5)" fill="none" stroke-width="6" stroke-linecap="round">
+    <g stroke="#34D399"><line x1="24" y1="24" x2="72" y2="72"/><line x1="72" y1="24" x2="24" y2="72"/></g>
+    <g stroke="#7FE0B6"><line x1="24" y1="24" x2="72" y2="24"/><line x1="72" y1="24" x2="72" y2="72"/><line x1="72" y1="72" x2="24" y2="72"/><line x1="24" y1="72" x2="24" y2="24"/></g>
+  </g>
+  <g transform="translate(0 8) scale(0.5)">
+    <circle cx="24" cy="24" r="8.5" fill="#EAFFF6"/><circle cx="72" cy="72" r="8.5" fill="#EAFFF6"/>
+    <circle cx="72" cy="24" r="8.5" fill="#7FE0B6"/><circle cx="24" cy="72" r="8.5" fill="#7FE0B6"/>
+  </g>
+  <text x="62" y="42" font-family="'Space Grotesk', sans-serif" font-weight="700" font-size="30" letter-spacing="-0.5" fill="#ECFDF5">Open<tspan fill="#34D399">Share</tspan></text>
+</svg>

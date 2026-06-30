@@ -67,6 +67,7 @@ public class AboutMirth extends MirthDialog {
 
         content.append("Java version: ").append(System.getProperty("java.version")).append("\n\n");
 
+        content.append("(c) 2026 Saga IT, LLC. OpenShare Engine is built on Open Integration Engine.\n\n");
         content.append("(c) 2025 Open Integration Engine contributors. Visit https://openintegrationengine.org\n\n");
         content.append("(c) 2005-2024 NextGen Healthcare.\n\n");
         content.append("The following is a list of acknowledgements for third-party software that is included with ").append(BrandingConstants.PRODUCT_NAME).append(":\n\n");
