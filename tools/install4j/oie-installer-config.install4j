@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <install4j version="13.1.1" transformSequenceNumber="13">
-  <application name="OpenShare Engine" applicationId="4145-9206-7630-8076" mediaDir="${compiler:installer:mediaRoot}/server/build" shortName="oie" publisher="Saga IT, LLC" publisherWeb="https://openshare.health" version="4.7.0" backupOnSave="true" autoSave="true" macVolumeId="88477e584eb462ba" javaMinVersion="17" javaMaxVersion="999">
+  <application name="OpenShare Engine" applicationId="2452-6733-0152-0496" mediaDir="${compiler:installer:mediaRoot}/server/build" shortName="oie" publisher="Saga IT, LLC" publisherWeb="https://openshare.health" version="4.7.0" backupOnSave="true" autoSave="true" macVolumeId="27d28c9f9b4fef92" javaMinVersion="17" javaMaxVersion="999">
     <variables>
       <variable name="installer:mediaRoot" value="../.." />
     </variables>
@@ -410,7 +410,7 @@ return true;</property>
               <action id="26" beanClass="com.install4j.runtime.beans.actions.services.InstallServiceAction" actionElevationType="elevated" rollbackBarrierExitCode="0" failureStrategy="ask">
                 <serializedBean>
                   <property name="launcherId" type="string">25</property>
-                  <property name="macosIdentifier" type="string">com.oie.oieservice</property>
+                  <property name="macosIdentifier" type="string">health.openshare.engineservice</property>
                 </serializedBean>
               </action>
             </actions>
@@ -758,41 +758,41 @@ return console.askYesNo(message, true);
     </widgetStyles>
   </installerGui>
   <mediaSets>
-    <windows name="Windows x64" id="27" mediaFileName="${compiler:sys.shortName}_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine" architecture="64">
+    <windows name="Windows x64" id="27" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine" architecture="64">
       <jreBundle usePack200="false" jreBundleSource="none" />
     </windows>
-    <unixInstaller name="Unix Installer" id="42" mediaFileName="${compiler:sys.shortName}_${compiler:sys.platform}_${compiler:sys.version}">
+    <unixInstaller name="Unix Installer" id="42" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine">
       <jreBundle usePack200="false" jreBundleSource="none" />
     </unixInstaller>
-    <macosFolder name="macOS Folder - ARM" id="43" mediaFileName="${compiler:sys.shortName}_${compiler:sys.platform}_${compiler:sys.version}-aarch" installDir="OpenShareEngine">
+    <macosFolder name="macOS Folder - ARM" id="43" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-aarch" installDir="OpenShareEngine">
       <jreBundle usePack200="false" jreBundleSource="none" />
     </macosFolder>
-    <unixArchive name="Unix Archive" id="44" mediaFileName="${compiler:sys.shortName}_${compiler:sys.platform}_${compiler:sys.version}">
+    <unixArchive name="Unix Archive" id="44" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine">
       <jreBundle jreBundleSource="none" />
     </unixArchive>
-    <macosFolder name="macOS Folder - Intel" id="116" mediaFileName="${compiler:sys.shortName}_${compiler:sys.platform}_${compiler:sys.version}-x86" installDir="OpenShareEngine" architecture="amd64">
+    <macosFolder name="macOS Folder - Intel" id="116" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-x86" installDir="OpenShareEngine" architecture="amd64">
       <jreBundle usePack200="false" jreBundleSource="none" />
     </macosFolder>
-    <windows name="Windows ARM" id="119" mediaFileName="${compiler:sys.shortName}_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine" architecture="arm64">
+    <windows name="Windows ARM" id="119" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine" architecture="arm64">
       <jreBundle jreBundleSource="none" />
     </windows>
-    <windows name="Windows x64-with-JRE" id="121" mediaFileName="${compiler:sys.shortName}_${compiler:sys.platform}_${compiler:sys.version}-with-JRE" installDir="OpenShareEngine" architecture="64">
+    <windows name="Windows x64-with-JRE" id="121" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-with-JRE" installDir="OpenShareEngine" architecture="64">
       <jreBundle usePack200="false" />
     </windows>
-    <unixInstaller name="Unix Installer-with-JRE" id="125" mediaFileName="${compiler:sys.shortName}_${compiler:sys.platform}_${compiler:sys.version}-with-JRE">
+    <unixInstaller name="Unix Installer-with-JRE" id="125" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-with-JRE" installDir="OpenShareEngine">
       <jreBundle usePack200="false" />
     </unixInstaller>
-    <macosFolder name="macOS Folder - ARM-with-JRE" id="130" mediaFileName="${compiler:sys.shortName}_${compiler:sys.platform}_${compiler:sys.version}-aarch-with-JRE" installDir="OpenShareEngine">
+    <macosFolder name="macOS Folder - ARM-with-JRE" id="130" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-aarch-with-JRE" installDir="OpenShareEngine">
       <jreBundle usePack200="false" />
     </macosFolder>
-    <macosFolder name="macOS Folder - Intel-with-JRE" id="133" mediaFileName="${compiler:sys.shortName}_${compiler:sys.platform}_${compiler:sys.version}-x86-with-JRE" installDir="OpenShareEngine" architecture="amd64">
+    <macosFolder name="macOS Folder - Intel-with-JRE" id="133" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-x86-with-JRE" installDir="OpenShareEngine" architecture="amd64">
       <jreBundle usePack200="false" />
     </macosFolder>
-    <windows name="Windows ARM-with-JRE" id="136" mediaFileName="${compiler:sys.shortName}_${compiler:sys.platform}_${compiler:sys.version}-with-JRE" installDir="OpenShareEngine" architecture="arm64" />
-    <windowsArchive name="Windows x64 Archive" id="153" mediaFileName="${compiler:sys.shortName}_${compiler:sys.platform}_${compiler:sys.version}" architecture="64">
+    <windows name="Windows ARM-with-JRE" id="136" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-with-JRE" installDir="OpenShareEngine" architecture="arm64" />
+    <windowsArchive name="Windows x64 Archive" id="153" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine" architecture="64">
       <jreBundle jreBundleSource="none" />
     </windowsArchive>
-    <windowsArchive name="Windows ARM Archive" id="167" mediaFileName="${compiler:sys.shortName}_${compiler:sys.platform}_${compiler:sys.version}" architecture="arm64">
+    <windowsArchive name="Windows ARM Archive" id="167" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine" architecture="arm64">
       <jreBundle jreBundleSource="none" />
     </windowsArchive>
   </mediaSets>
