@@ -26,6 +26,12 @@
 #   INSTALL4JC          path to install4jc (default: ~/opt/install4j13.0/bin/install4jc)
 #   PLUGIN_REPO         plugin GitHub repo (default: SagaHealthcareIT/mirthsync-gateway-plugin)
 #   SKIP_ENGINE_BUILD=1 reuse an existing server/setup (skip the Ant build)
+#   PUBLISH_RELEASE=1   after signing, attach media + .sha256 + provenance to a
+#                       GitHub release (tag openshare-v<engine-version>) that the
+#                       publish-engine-to-s3{,-prod}.yml workflows pull from
+#   ENGINE_REPO         release repo (default: SagaHealthcareIT/open-integration-engine-internal)
+#   RELEASE_TAG         override the release tag (default: openshare-v<engine-version>)
+#   RELEASE_NOTES       path to a release-notes markdown file (default: a one-line stub)
 #
 set -euo pipefail
 
@@ -41,6 +47,17 @@ OPENSC="/usr/lib64/opensc-pkcs11.so"
 MEDIA_IDS="${2:-${MEDIA_IDS:-27,119,42,121,136,125}}"
 PLUGIN_SOURCE="${1:-}"
 PLUGIN_REPO="${PLUGIN_REPO:-SagaHealthcareIT/mirthsync-gateway-plugin}"
+
+# GitHub-release handoff (opt-in). When PUBLISH_RELEASE=1, the signed media +
+# their .sha256 sidecars + the provenance marker are attached to a GitHub
+# release on ENGINE_REPO under an `openshare-v<engine-version>` tag. The
+# publish-engine-to-s3{,-prod}.yml workflows then pull from that release. The
+# tag is namespaced so it never collides with the upstream mirror's
+# `X.Y.Z-<sha>` prereleases in the same repo. Off by default so a plain build
+# (dev iteration) never creates a release.
+PUBLISH_RELEASE="${PUBLISH_RELEASE:-0}"
+ENGINE_REPO="${ENGINE_REPO:-SagaHealthcareIT/open-integration-engine-internal}"
+RELEASE_TAG="${RELEASE_TAG:-}"   # default computed after ENGINE_VER is known
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
@@ -164,6 +181,54 @@ ENGINE_VER="$(grep '<application ' "$CONFIG" | grep -oE ' version="[^"]*"' | hea
 } > "$MARKER"
 echo "==> Provenance written to $MARKER:"
 sed 's/^/    /' "$MARKER"
+
+# --- Per-media checksum sidecars ------------------------------------------
+# The publish workflow verifies each S3 object against a <media>.sha256 sidecar,
+# so emit one next to every built installer (relative name inside the file so
+# `sha256sum -c` works from the same dir).
+echo "==> Writing .sha256 sidecars"
+shopt -s nullglob
+MEDIA_FILES=( "$BUILD_OUT"/openshare_*.exe "$BUILD_OUT"/openshare_*.sh \
+              "$BUILD_OUT"/openshare_*.dmg "$BUILD_OUT"/openshare_*.zip \
+              "$BUILD_OUT"/openshare_*.tar.gz )
+shopt -u nullglob
+[ "${#MEDIA_FILES[@]}" -gt 0 ] || die "no openshare_* media found in $BUILD_OUT"
+for m in "${MEDIA_FILES[@]}"; do
+  ( cd "$(dirname "$m")" && sha256sum "$(basename "$m")" > "$(basename "$m").sha256" )
+done
+
+# --- GitHub-release handoff (opt-in) --------------------------------------
+if [ "$PUBLISH_RELEASE" = 1 ]; then
+  command -v gh >/dev/null 2>&1 || die "'gh' (GitHub CLI) required for PUBLISH_RELEASE=1"
+  [ -n "$ENGINE_VER" ] || die "could not derive engine version from $CONFIG (needed for the release tag)"
+  TAG="${RELEASE_TAG:-openshare-v${ENGINE_VER}}"
+  case "$TAG" in
+    openshare-v[0-9]*) ;;
+    *) die "RELEASE_TAG must be 'openshare-v<semver>' (got '$TAG')";;
+  esac
+
+  UPLOADS=( "${MEDIA_FILES[@]}" )
+  for m in "${MEDIA_FILES[@]}"; do UPLOADS+=( "${m}.sha256" ); done
+  UPLOADS+=( "$MARKER" )   # BUNDLED_PLUGIN.txt provenance
+
+  echo "==> Publishing GitHub release $TAG on $ENGINE_REPO"
+  if gh release view "$TAG" --repo "$ENGINE_REPO" >/dev/null 2>&1; then
+    echo "    release exists — uploading assets with --clobber"
+    gh release upload "$TAG" --repo "$ENGINE_REPO" --clobber "${UPLOADS[@]}"
+  else
+    # --latest=false so an OpenShare release never steals the "Latest" badge
+    # from the upstream-mirror tooling in this shared repo. Promote by hand if
+    # desired. Notes come from RELEASE_NOTES (file path) or a stub.
+    NOTES_ARG=( --notes "OpenShare Engine ${ENGINE_VER} (bundled plugin ${PLUGIN_VERSION}). EV-signed installers." )
+    [ -n "${RELEASE_NOTES:-}" ] && [ -f "${RELEASE_NOTES}" ] && NOTES_ARG=( --notes-file "$RELEASE_NOTES" )
+    gh release create "$TAG" --repo "$ENGINE_REPO" \
+      --title "OpenShare Engine ${ENGINE_VER}" \
+      --latest=false "${NOTES_ARG[@]}" \
+      "${UPLOADS[@]}"
+  fi
+  echo "==> Release $TAG published. Next: dispatch publish-engine-to-s3.yml (dev)"
+  echo "    then, after dev validation, publish-engine-to-s3-prod.yml (prod) with tag=$TAG"
+fi
 
 echo
 echo "==> Done. Signed artifacts in $BUILD_OUT:"
