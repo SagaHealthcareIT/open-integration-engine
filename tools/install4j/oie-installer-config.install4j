@@ -4,6 +4,7 @@
     <variables>
       <variable name="installer:mediaRoot" value="../.." />
     </variables>
+    <codeSigning windowsEnabled="true" windowsKeySource="pkcs11" windowsPkcs11Library="/usr/lib64/opensc-pkcs11.so" windowsPkcs11Slot="1" windowsCertDir="${compiler:installer:mediaRoot}/tools/install4j/signing-chain" />
     <jreBundles jdkProviderId="Zulu" release="17/17.0.15">
       <modules>
         <defaultModules set="all" />
@@ -17,13 +18,6 @@
     <entries>
       <dirEntry mountPoint="24" file="${compiler:installer:mediaRoot}/server/setup" subDirectory="setup">
         <exclude>
-          <!-- These four are installed exclusively by the second dirEntry below (at the
-               mount-point root, overwriteMode=never / uninstallMode=never so user edits and
-               config survive upgrade + uninstall). Excluding them here prevents the same
-               source file from appearing in two entries: install4j 11 tolerated that overlap,
-               install4j 13 rejects it ("Invalid multiple inclusion"). Semantics are unchanged
-               vs. upstream's 11 build; only the redundant setup/ duplicate of the three launch
-               scripts is dropped. -->
           <entry location="conf" />
           <entry location="configure-from-env" />
           <entry location="oieserver" />
