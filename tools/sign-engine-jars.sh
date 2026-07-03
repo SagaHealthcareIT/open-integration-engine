@@ -80,7 +80,13 @@ library = $PKCS11_MODULE
 slot = $PKCS11_SLOT
 EOF
 
-read -rsp "Enter eToken PIN: " PKCS11_STOREPASS; echo
+# PIN from the environment (set by release-signed.sh so it prompts only once),
+# otherwise prompt interactively.
+if [ -n "${TOKEN_PIN:-}" ]; then
+  PKCS11_STOREPASS="$TOKEN_PIN"
+else
+  read -rsp "Enter eToken PIN: " PKCS11_STOREPASS; echo
+fi
 keytool -list -keystore NONE -storetype PKCS11 \
   -providerClass sun.security.pkcs11.SunPKCS11 -providerArg "$PKCS11_CFG" \
   -storepass "$PKCS11_STOREPASS" >/dev/null 2>&1 \
