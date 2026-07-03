@@ -1,0 +1,188 @@
+name: Publish Engine to S3
+
+# DEV publisher for the branded OpenShare Engine installers.
+#
+# Triggered manually after a maintainer has built + EV-signed the installer
+# media on the signing machine (eToken inserted) and attached them to a
+# GitHub release with tools/release-signed.sh. CI cannot build (install4j is
+# licensed) or sign (the Sectigo eToken is hardware) the engine, so — unlike
+# a normal app — there is NO CI build step and NO fast dev channel. This
+# workflow only moves the already-signed release assets into the dev bucket.
+#
+# The prod sibling is publish-engine-to-s3-prod.yml. Env isolation is enforced
+# at the IAM trust: each env's mdds-llm-${env}-engine-publisher role pins OIDC
+# job_workflow_ref to its own workflow file, so a dev dispatch physically
+# cannot assume the prod role. Deliberately NOT a workflow_call reusable —
+# that collapses job_workflow_ref to the shared file and destroys isolation.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. openshare-v4.6.0). The release must already have the EV-signed openshare_* media + their .sha256 sidecars attached.'
+        required: true
+        type: string
+
+permissions:
+  id-token: write   # OIDC role assumption
+  contents: read
+
+jobs:
+  publish:
+    name: Upload signed engine media + manifest to S3 (dev)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate tag input
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          # OpenShare engine releases are namespaced `openshare-v<semver>` so
+          # they never collide with the upstream mirror's `X.Y.Z-<sha>`
+          # prereleases in this same repo, and so this workflow can't be
+          # dispatched against an upstream tag.
+          if [[ ! "$TAG" =~ ^openshare-v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "Invalid tag: $TAG"
+            echo "Expected openshare-vMAJOR.MINOR.PATCH (optionally -suffix)"
+            exit 1
+          fi
+          echo "version=${TAG#openshare-v}" >> "$GITHUB_ENV"
+
+      - name: Download signed media from GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          mkdir -p release
+          # openshare_* = the install4j media (.exe/.sh/.dmg[/.zip/.tar.gz])
+          # and their .sha256 sidecars; BUNDLED_PLUGIN.txt = provenance marker.
+          gh release download "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern 'openshare_*' \
+            --pattern 'BUNDLED_PLUGIN.txt' \
+            --dir release
+          echo "Downloaded:"; ls -la release/
+          # At least one installer media (not a .sha256) must be present.
+          shopt -s nullglob
+          media=(release/openshare_*)
+          real=0; for f in "${media[@]}"; do case "$f" in *.sha256) ;; *) real=$((real+1));; esac; done
+          [ "$real" -ge 1 ] || { echo "No installer media on release $TAG"; exit 1; }
+
+      - name: Build manifest.json
+        id: manifest
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd release
+          RELEASED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          # Bundled plugin version, if the provenance marker is present.
+          PLUGIN_VER=""
+          if [ -f BUNDLED_PLUGIN.txt ]; then
+            PLUGIN_VER=$(grep -E '^plugin_version=' BUNDLED_PLUGIN.txt | head -1 | cut -d= -f2- || true)
+          fi
+
+          # Release notes carried inline (repo is private; a link is useless to
+          # end users). Strip CRLF; omit when empty. Same pattern as the plugin.
+          NOTES=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq '.body // ""' | tr -d '\r')
+
+          # Build one media descriptor per installer file. OS comes from the
+          # extension; arch + jreBundled from order-independent substring match
+          # (install4j names are openshare_<platform>_<ver>[-arch][-with-JRE].<ext>).
+          # The raw filename + downloadKey are always carried, so an imperfect
+          # os/arch label never blocks a download.
+          : > media.jsonl
+          for f in openshare_*; do
+            case "$f" in *.sha256) continue;; esac
+            base=$(basename "$f")
+
+            # Verify against the published checksum sidecar if present.
+            if [ -f "${f}.sha256" ]; then
+              sha256sum -c "${f}.sha256" >/dev/null 2>&1 \
+                || { echo "sha256 mismatch for $base"; exit 1; }
+            fi
+
+            sha=$(sha256sum "$f" | awk '{print $1}')
+            size=$(stat -c %s "$f")
+
+            jre=false; case "$base" in *-with-JRE.*) jre=true;; esac
+            os=other
+            case "$base" in
+              *.exe)             os=windows;;
+              *.dmg)             os=macos;;
+              *.sh)              os=linux;;
+              *.zip)             os=windows-archive;;
+              *.tar.gz|*.tgz)    os=linux-archive;;
+            esac
+            arch=universal
+            case "$base" in
+              *arm64*|*aarch64*|*aarch*) arch=arm64;;
+              *x86-64*|*x86_64*|*x64*)   arch=x64;;
+              *x86*|*i386*)              arch=x86;;
+            esac
+
+            jq -n -c \
+              --arg filename "$base" \
+              --arg os "$os" \
+              --arg arch "$arch" \
+              --argjson jreBundled "$jre" \
+              --arg downloadKey "engine/${TAG}/${base}" \
+              --argjson sizeBytes "$size" \
+              --arg sha256 "$sha" \
+              '{filename:$filename, os:$os, arch:$arch, jreBundled:$jreBundled, downloadKey:$downloadKey, sizeBytes:$sizeBytes, sha256:$sha256}' \
+              >> media.jsonl
+          done
+
+          jq -s \
+            --argjson schemaVersion 1 \
+            --arg engineVersion "${version}" \
+            --arg tag "$TAG" \
+            --arg releasedAt "$RELEASED_AT" \
+            --arg bundledPluginVersion "$PLUGIN_VER" \
+            --arg releaseNotes "$NOTES" \
+            '{schemaVersion:$schemaVersion, engineVersion:$engineVersion, tag:$tag, releasedAt:$releasedAt, media:.}
+             + (if $bundledPluginVersion == "" then {} else {bundledPluginVersion:$bundledPluginVersion} end)
+             + (if $releaseNotes == "" then {} else {releaseNotes:$releaseNotes} end)' \
+            media.jsonl > manifest.json
+          echo "----- manifest.json -----"; cat manifest.json
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ENGINE_PUBLISHER_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Upload signed media to S3
+        env:
+          BUCKET: ${{ secrets.AWS_ENGINE_ARTIFACTS_BUCKET }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          cd release
+          for f in openshare_*; do
+            case "$f" in *.sha256) continue;; esac
+            base=$(basename "$f")
+            sha=$(sha256sum "$f" | awk '{print $1}')
+            aws s3 cp "$f" "s3://${BUCKET}/engine/${TAG}/${base}" \
+              --metadata "version=${version},tag=${TAG},sha256=${sha},signed=true"
+          done
+
+      - name: Publish manifests
+        env:
+          BUCKET: ${{ secrets.AWS_ENGINE_ARTIFACTS_BUCKET }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          cd release
+          # Immutable per-release copy (audit) + the single latest pointer the
+          # console reads. No per-tier split: the engine binary is identical for
+          # every subscription tier (tier gating happens at plugin runtime, not
+          # at engine download). Restrict who may download at the API layer if
+          # ever needed — not by cloning the manifest into tier buckets.
+          aws s3 cp manifest.json "s3://${BUCKET}/engine/${TAG}/manifest.json" \
+            --content-type application/json
+          aws s3 cp manifest.json "s3://${BUCKET}/engine/latest/manifest.json" \
+            --content-type application/json \
+            --cache-control "no-cache, max-age=60"
