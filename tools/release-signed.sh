@@ -12,12 +12,19 @@
 #
 # You are prompted for the token PIN ONCE; it is reused for steps 2 and 4.
 #
+# The plugin source is either a published release tag (pulled from GitHub, the
+# authoritative signed artifact) or a local zip:
+#   tools/release-signed.sh v0.22.0            # pull admin-console-*-signed.zip from the release
+#   tools/release-signed.sh ./admin-console.zip # use a local build (dev)
+# A provenance marker (plugin version + sha256) is written to server/build/BUNDLED_PLUGIN.txt.
+#
 # Usage:
-#   tools/release-signed.sh <path-to-admin-console.zip> [media-ids]
+#   tools/release-signed.sh <plugin-tag|admin-console.zip> [media-ids]
 #
 # Env overrides:
 #   MEDIA_IDS           install4j media ids (default: Windows + Linux, no-JRE + with-JRE)
 #   INSTALL4JC          path to install4jc (default: ~/opt/install4j13.0/bin/install4jc)
+#   PLUGIN_REPO         plugin GitHub repo (default: SagaHealthcareIT/mirthsync-gateway-plugin)
 #   SKIP_ENGINE_BUILD=1 reuse an existing server/setup (skip the Ant build)
 #
 set -euo pipefail
@@ -32,13 +39,15 @@ OPENSC="/usr/lib64/opensc-pkcs11.so"
 # Windows x64/arm64 + Linux, no-JRE and with-JRE. macOS (43,116,130,133) is omitted
 # until Apple notarization is set up — add those ids once it is.
 MEDIA_IDS="${2:-${MEDIA_IDS:-27,119,42,121,136,125}}"
-PLUGIN_ZIP="${1:-}"
+PLUGIN_SOURCE="${1:-}"
+PLUGIN_REPO="${PLUGIN_REPO:-SagaHealthcareIT/mirthsync-gateway-plugin}"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
 # --- Preflight -------------------------------------------------------------
-[ -n "$PLUGIN_ZIP" ] || die "usage: tools/release-signed.sh <admin-console.zip> [media-ids]"
-[ -f "$PLUGIN_ZIP" ] || die "plugin zip not found: $PLUGIN_ZIP"
+[ -n "$PLUGIN_SOURCE" ] || die "usage: tools/release-signed.sh <plugin-tag|admin-console.zip> [media-ids]
+       plugin-tag e.g. v0.22.0 pulls admin-console-*-signed.zip from $PLUGIN_REPO;
+       or pass a path to a local admin-console.zip"
 [ -x "$INSTALL4JC" ] || die "install4jc not found/executable: $INSTALL4JC (set INSTALL4JC=)"
 [ -f "$CONFIG" ]     || die "install4j config missing: $CONFIG"
 for t in ant jarsigner keytool jar unzip pkcs11-tool openssl curl python3; do
@@ -46,6 +55,26 @@ for t in ant jarsigner keytool jar unzip pkcs11-tool openssl curl python3; do
 done
 pkcs11-tool --module "$OPENSC" --list-slots 2>&1 | grep -q "Saga IT, LLC" \
   || die "eToken not detected via OpenSC — insert + unlock it (pcscd running?)"
+
+# --- Resolve the plugin: a local zip, or a published release tag -----------
+WORKDIR="$(mktemp -d)"; trap 'rm -rf "$WORKDIR"' EXIT
+if [ -f "$PLUGIN_SOURCE" ]; then
+  PLUGIN_ZIP="$PLUGIN_SOURCE"
+  PLUGIN_VERSION="local:$(basename "$PLUGIN_SOURCE")"
+  echo "==> Plugin: local zip $PLUGIN_ZIP"
+elif printf '%s' "$PLUGIN_SOURCE" | grep -qE '^v?[0-9]+\.[0-9]+\.[0-9]+$'; then
+  command -v gh >/dev/null 2>&1 || die "'gh' (GitHub CLI) is required to pull a plugin release"
+  TAG="$PLUGIN_SOURCE"; case "$TAG" in v*) ;; *) TAG="v$TAG" ;; esac
+  echo "==> Plugin: downloading $TAG (admin-console-*-signed.zip) from $PLUGIN_REPO"
+  gh release download "$TAG" --repo "$PLUGIN_REPO" \
+     --pattern 'admin-console-*-signed.zip' --dir "$WORKDIR" 2>/dev/null \
+     || die "could not download $TAG from $PLUGIN_REPO (release or signed asset missing?)"
+  PLUGIN_ZIP="$(ls -1 "$WORKDIR"/admin-console-*-signed.zip 2>/dev/null | head -1)"
+  [ -n "$PLUGIN_ZIP" ] || die "release $TAG has no admin-console-*-signed.zip asset"
+  PLUGIN_VERSION="$TAG"
+else
+  die "plugin source '$PLUGIN_SOURCE' is neither an existing file nor a version tag (vX.Y.Z)"
+fi
 
 echo "==> Building media: $MEDIA_IDS"
 read -rsp "eToken PIN: " TOKEN_PIN; echo
@@ -110,6 +139,22 @@ PY
 else
   echo "    (no Windows x64 media built — skipping signature check)"
 fi
+
+# --- Provenance marker: which plugin version this release bundled ----------
+mkdir -p "$BUILD_OUT"
+MARKER="$BUILD_OUT/BUNDLED_PLUGIN.txt"
+ENGINE_VER="$(grep '<application ' "$CONFIG" | grep -oE ' version="[^"]*"' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+{
+  echo "engine_version=$ENGINE_VER"
+  echo "plugin_version=$PLUGIN_VERSION"
+  echo "plugin_repo=$PLUGIN_REPO"
+  echo "plugin_zip=$(basename "$PLUGIN_ZIP")"
+  echo "plugin_sha256=$(sha256sum "$PLUGIN_ZIP" | cut -d' ' -f1)"
+  echo "media_ids=$MEDIA_IDS"
+  echo "built_utc=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+} > "$MARKER"
+echo "==> Provenance written to $MARKER:"
+sed 's/^/    /' "$MARKER"
 
 echo
 echo "==> Done. Signed artifacts in $BUILD_OUT:"
