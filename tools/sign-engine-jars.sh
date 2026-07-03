@@ -16,10 +16,18 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# Signing configuration (keep in sync with mirthsync-gateway-plugin/build.sh)
+# Signing configuration
+#
+# The Sectigo EV key lives on a SafeNet eToken 5110. We drive it through the
+# OpenSC PKCS#11 module (packaged: `opensc`), NOT the proprietary SafeNet client
+# — OpenSC enumerates the token, exposes the key to Java's SunPKCS11 provider as
+# alias "Certificate 1" in slot 0x4, and signs SHA256withRSA (verified).
+# To use the vendor lib instead, set PKCS11_MODULE=/usr/lib64/libIDPrimePKCS11.so,
+# PKCS11_SLOT=1, SIGNING_ALIAS=Sectigo_20260129130704.
 # ---------------------------------------------------------------------------
-SAFENET_PKCS11_LIB="/usr/lib64/libIDPrimePKCS11.so"
-SAFENET_ALIAS="Sectigo_20260129130704"
+PKCS11_MODULE="/usr/lib64/opensc-pkcs11.so"
+PKCS11_SLOT="4"                       # SafeNet eToken cert slot (0x4 = "Saga IT, LLC")
+SIGNING_ALIAS="Certificate 1"         # SunPKCS11-OpenSC alias for the EV key
 SECTIGO_TSA_URL="http://timestamp.sectigo.com"
 SECTIGO_INTERMEDIATE_URL="http://crt.sectigo.com/SectigoPublicCodeSigningCAEVR36.crt"
 SECTIGO_CROSS_ROOT_URL="https://sectigo.tbs-certificats.com/SectigoPublicCodeSigningRootCrossAAA.crt"
@@ -48,9 +56,9 @@ trap cleanup EXIT
 for tool in jarsigner keytool jar openssl curl pkcs11-tool; do
   command -v "$tool" >/dev/null 2>&1 || { echo "ERROR: '$tool' not on PATH." >&2; exit 1; }
 done
-if [ ! -f "$SAFENET_PKCS11_LIB" ] || \
-   ! pkcs11-tool --module "$SAFENET_PKCS11_LIB" --list-slots 2>&1 | grep -q "token label"; then
-  echo "ERROR: SafeNet eToken not detected ($SAFENET_PKCS11_LIB). Insert + unlock the token." >&2
+if [ ! -f "$PKCS11_MODULE" ] || \
+   ! pkcs11-tool --module "$PKCS11_MODULE" --list-slots 2>&1 | grep -q "token label"; then
+  echo "ERROR: token not detected via $PKCS11_MODULE. Insert the eToken (and check pcscd)." >&2
   exit 1
 fi
 
@@ -65,14 +73,14 @@ fi
 # ---------------------------------------------------------------------------
 # Unlock token + assemble the full cert chain (leaf + intermediate + cross-root)
 # ---------------------------------------------------------------------------
-PKCS11_CFG="$(mktemp /tmp/pkcs11-safenet.XXXXXX.cfg)"
+PKCS11_CFG="$(mktemp /tmp/pkcs11-opensc.XXXXXX.cfg)"
 cat > "$PKCS11_CFG" <<EOF
-name = SafeNet
-library = $SAFENET_PKCS11_LIB
-slot = 1
+name = OpenSC
+library = $PKCS11_MODULE
+slot = $PKCS11_SLOT
 EOF
 
-read -rsp "Enter SafeNet token PIN: " PKCS11_STOREPASS; echo
+read -rsp "Enter eToken PIN: " PKCS11_STOREPASS; echo
 keytool -list -keystore NONE -storetype PKCS11 \
   -providerClass sun.security.pkcs11.SunPKCS11 -providerArg "$PKCS11_CFG" \
   -storepass "$PKCS11_STOREPASS" >/dev/null 2>&1 \
@@ -82,7 +90,7 @@ echo "Assembling certificate chain..."
 CERTCHAIN_FILE="$(mktemp /tmp/certchain.XXXXXX.pem)"
 keytool -exportcert -keystore NONE -storetype PKCS11 \
   -providerClass sun.security.pkcs11.SunPKCS11 -providerArg "$PKCS11_CFG" \
-  -storepass "$PKCS11_STOREPASS" -alias "$SAFENET_ALIAS" -rfc > "$CERTCHAIN_FILE" 2>/dev/null
+  -storepass "$PKCS11_STOREPASS" -alias "$SIGNING_ALIAS" -rfc > "$CERTCHAIN_FILE" 2>/dev/null
 _tmp="$(mktemp)"
 if curl -sf "$SECTIGO_INTERMEDIATE_URL" -o "$_tmp"; then
   openssl x509 -in "$_tmp" -inform DER >> "$CERTCHAIN_FILE" 2>/dev/null || true
@@ -117,7 +125,7 @@ sign_one() {             # $1 = jar ; retry for flaky TSA (mirrors Ant retrycoun
           -storepass "$PKCS11_STOREPASS" \
           -certchain "$CERTCHAIN_FILE" -tsa "$SECTIGO_TSA_URL" \
           -sigalg "$SIG_ALG" -digestalg "$DIGEST_ALG" \
-          "$jar" "$SAFENET_ALIAS" >/dev/null 2>&1; do
+          "$jar" "$SIGNING_ALIAS" >/dev/null 2>&1; do
     if [ "$attempt" -ge 5 ]; then echo "  FAILED: $jar" >&2; return 1; fi
     attempt=$((attempt+1)); sleep 2
   done
@@ -127,7 +135,7 @@ sign_one() {             # $1 = jar ; retry for flaky TSA (mirrors Ant retrycoun
 # Run: manifest-mod + sign every client-lib and (built-in) extension jar
 # ---------------------------------------------------------------------------
 mapfile -d '' JARS < <(find "$CLIENT_LIB" "$EXTENSIONS" -name '*.jar' -print0 2>/dev/null)
-echo "Signing ${#JARS[@]} jars with $SAFENET_ALIAS ..."
+echo "Signing ${#JARS[@]} jars with '$SIGNING_ALIAS' ..."
 count=0
 for jar in "${JARS[@]}"; do
   add_manifest_attrs "$jar"
