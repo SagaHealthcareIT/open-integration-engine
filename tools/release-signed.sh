@@ -67,10 +67,19 @@ elif printf '%s' "$PLUGIN_SOURCE" | grep -qE '^v?[0-9]+\.[0-9]+\.[0-9]+$'; then
   TAG="$PLUGIN_SOURCE"; case "$TAG" in v*) ;; *) TAG="v$TAG" ;; esac
   echo "==> Plugin: downloading $TAG (admin-console-*-signed.zip) from $PLUGIN_REPO"
   gh release download "$TAG" --repo "$PLUGIN_REPO" \
-     --pattern 'admin-console-*-signed.zip' --dir "$WORKDIR" 2>/dev/null \
+     --pattern 'admin-console-*-signed.zip' --pattern 'admin-console-*-signed.zip.sha256' \
+     --dir "$WORKDIR" 2>/dev/null \
      || die "could not download $TAG from $PLUGIN_REPO (release or signed asset missing?)"
   PLUGIN_ZIP="$(ls -1 "$WORKDIR"/admin-console-*-signed.zip 2>/dev/null | head -1)"
   [ -n "$PLUGIN_ZIP" ] || die "release $TAG has no admin-console-*-signed.zip asset"
+  # Verify against the published signed checksum (produced by the plugin's sign-release.sh).
+  _sum="$(ls -1 "$WORKDIR"/admin-console-*-signed.zip.sha256 2>/dev/null | head -1)"
+  if [ -n "$_sum" ]; then
+    ( cd "$WORKDIR" && sha256sum -c "$(basename "$_sum")" >/dev/null 2>&1 ) \
+      && echo "    signed-zip sha256 verified" || die "signed-zip sha256 mismatch for $TAG"
+  else
+    echo "    (no -signed.zip.sha256 on $TAG — skipping checksum; EV-signature still checked at bundle)"
+  fi
   PLUGIN_VERSION="$TAG"
 else
   die "plugin source '$PLUGIN_SOURCE' is neither an existing file nor a version tag (vX.Y.Z)"
