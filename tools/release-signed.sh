@@ -116,8 +116,21 @@ else
 fi
 
 # --- 2. EV-sign the engine jars (before bundling the plugin) ---------------
-echo "==> [2/5] EV-signing engine client + extension jars (OpenSC/PKCS#11)"
-"$REPO_ROOT/tools/sign-engine-jars.sh" "$SETUP"
+# Signing 216 jars (each TSA-timestamped) is slow; SKIP_ENGINE_SIGN=1 reuses the
+# signatures already in $SETUP so a failed later step can be resumed without a
+# full re-sign. Only safe when the jars really are already EV-signed.
+if [ "${SKIP_ENGINE_SIGN:-0}" = 1 ]; then
+  echo "==> [2/5] Skipping engine jar signing (SKIP_ENGINE_SIGN=1); reusing signatures in $SETUP"
+  _probe="$SETUP/client-lib/mirth-client.jar"
+  if [ -f "$_probe" ] && jarsigner -verify -verbose:summary -certs "$_probe" 2>/dev/null | grep -q "Saga IT"; then
+    echo "    verified $_probe already carries our EV signature — good"
+  else
+    die "SKIP_ENGINE_SIGN=1 but $_probe is missing or not EV-signed — run a full sign first"
+  fi
+else
+  echo "==> [2/5] EV-signing engine client + extension jars (OpenSC/PKCS#11)"
+  "$REPO_ROOT/tools/sign-engine-jars.sh" "$SETUP"
+fi
 
 # --- 3. Bundle the already-signed plugin ----------------------------------
 echo "==> [3/5] Bundling plugin from $PLUGIN_ZIP"
@@ -127,7 +140,8 @@ unzip -oq "$PLUGIN_ZIP" -d "$SETUP/extensions/"   # zip has top-level admin-cons
 # Safety: the plugin's client jar must already be EV-signed, not self-signed.
 _pcj="$SETUP/extensions/admin-console/admin-console-client.jar"
 if [ -f "$_pcj" ]; then
-  if jarsigner -verify -certs "$_pcj" 2>/dev/null | grep -q "Saga IT"; then
+  # -verbose:summary is required for -certs to print the signer subject we grep.
+  if jarsigner -verify -verbose:summary -certs "$_pcj" 2>/dev/null | grep -q "Saga IT"; then
     echo "    plugin client jar is EV-signed (Saga IT) — good"
   else
     die "plugin client jar is NOT EV-signed (self-signed?). Rebuild the plugin with the token."
