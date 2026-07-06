@@ -89,18 +89,6 @@
         <file path="${compiler:installer:mediaRoot}/branding/openshare/icons/openshare_logo_only_white_background_128x128.png" />
       </iconImageFiles>
     </launcher>
-    <launcher name="oiemanager" id="56" menuName="${compiler:sys.fullName}">
-      <executable name="${compiler:sys.shortName}manager" iconSet="true" executableMode="gui" executionLevel="requireAdministrator" />
-      <java mainClass="com.mirth.connect.manager.Manager">
-        <classPath>
-          <archive location="mirth-manager-launcher.jar" failOnError="false" />
-        </classPath>
-      </java>
-      <vmOptionsFile mode="none" />
-      <iconImageFiles>
-        <file path="${compiler:installer:mediaRoot}/branding/openshare/icons/openshare_logo_only_white_background_128x128.png" />
-      </iconImageFiles>
-    </launcher>
     <launcher name="oiecommand" id="140" menuName="${compiler:sys.fullName}">
       <executable name="${compiler:sys.shortName}command" iconSet="true" redirectStderr="false" executableMode="console" executionLevel="requireAdministrator" />
       <java mainClass="com.mirth.connect.cli.launcher.CommandLineLauncher">
@@ -290,27 +278,28 @@ return console.askOkCancel(message, true);
               </formComponent>
               <formComponent id="108" beanClass="com.install4j.runtime.beans.formcomponents.HtmlDisplayFormComponent" useExternalParametrization="true" externalParametrizationName="HTML or text display" externalParametrizationMode="include">
                 <serializedBean>
+                  <property name="textSource" type="enum" class="com.install4j.runtime.beans.screens.components.TextSource" value="DIRECT" />
                   <property name="displayedText" type="string">&lt;!DOCTYPE html&gt;
 &lt;html&gt;
 &lt;body style="font-family: Arial, sans-serif; line-height: 1.6; margin: 1em; background-color: white; color: black;"&gt;
   &lt;h1 style="color: black;"&gt;OpenShare Engine - Preview Release&lt;/h1&gt;
   &lt;p&gt;This is a preview release of the OpenShare Engine.&lt;/p&gt;
   &lt;p&gt;
-    This release is recommended for users already familiar with Mirth Connect. 
+    This release is recommended for users already familiar with Mirth Connect.
     It installs a fully functional version of the engine with minimal prompts.
     As you have seen - this does require admin permissions to run and install services, we will be updating that!
   &lt;/p&gt;
   &lt;h2&gt;Notes&lt;/h2&gt;
   &lt;ul&gt;
-  &lt;li&gt;Native services are installed for all supported platforms and are configured to start automatically.&lt;/li&gt;
-  &lt;li&gt;&lt;strong&gt;macOS users:&lt;/strong&gt; A reboot will automatically start the service.&lt;/li&gt;
+  &lt;li&gt;A native service is installed and started right away, and is configured to start automatically at boot.&lt;/li&gt;
+  &lt;li&gt;The OpenShare admin-console plugin shipped alongside this installer is installed automatically — keep it in the same folder as the installer.&lt;/li&gt;
     &lt;li&gt;
       Default settings from mirth.properties are applied automatically; the installer does not prompt for customization.
     &lt;/li&gt;
     &lt;li&gt;This includes ports (default: 8080 and 8443), log and app data paths, and password requirements.&lt;/li&gt;
     &lt;li&gt;
-      Previous installations are not preserved, though runtime-created directories 
-      (e.g., appdata) 
+      Previous installations are not preserved, though runtime-created directories
+      (e.g., appdata)
       are retained across installs.
     &lt;/li&gt;
 
@@ -421,14 +410,71 @@ return true;
                 <serializedBean>
                   <property name="script">
                     <object class="com.install4j.api.beans.ScriptProperty">
-                      <property name="value" type="string">// Copy the per-download bootstrap.json (shipped next to the installer) into the
-// bundled plugin dir, so the OpenShare plugin self-registers on first launch.
-java.io.File src = new java.io.File(context.getInstallerFile().getParentFile(), "bootstrap.json");
+                      <property name="value" type="string">// The console's wrapper ZIP ships the current signed admin-console plugin
+// (admin-console.zip) and this server's bootstrap.json as siblings of the
+// installer. Unpack the plugin into extensions/ BEFORE the service is
+// installed and started, so the very first boot loads it — the engine media
+// themselves carry no baked plugin (see tools/release-signed.sh).
+java.io.File siblingDir = context.getInstallerFile().getParentFile();
+java.io.File extensionsDir = new java.io.File(context.getInstallationDirectory(), "extensions");
+java.io.File pluginDir = new java.io.File(extensionsDir, "admin-console");
+
+java.io.File pluginZip = new java.io.File(siblingDir, "admin-console.zip");
+if (pluginZip.isFile()) {
+    // Replace the plugin dir wholesale so files dropped between plugin
+    // versions can't linger from a previous install.
+    if (pluginDir.exists()) {
+        java.util.List&lt;java.nio.file.Path&gt; paths = new java.util.ArrayList&lt;&gt;();
+        java.util.stream.Stream&lt;java.nio.file.Path&gt; walk = java.nio.file.Files.walk(pluginDir.toPath());
+        try {
+            walk.forEach(paths::add);
+        } finally {
+            walk.close();
+        }
+        java.util.Collections.reverse(paths); // children before parents
+        for (java.nio.file.Path p : paths) {
+            java.nio.file.Files.delete(p);
+        }
+    }
+    java.nio.file.Path extRoot = extensionsDir.toPath().toAbsolutePath().normalize();
+    java.util.zip.ZipFile zf = new java.util.zip.ZipFile(pluginZip);
+    try {
+        java.util.Enumeration&lt;? extends java.util.zip.ZipEntry&gt; entries = zf.entries();
+        while (entries.hasMoreElements()) {
+            java.util.zip.ZipEntry entry = entries.nextElement();
+            // The zip has a top-level admin-console/ directory, so entries land
+            // in extensions/admin-console/. Reject anything escaping extensions/.
+            java.nio.file.Path target = extRoot.resolve(entry.getName()).normalize();
+            if (!target.startsWith(extRoot)) {
+                throw new java.io.IOException("Blocked zip entry outside extensions/: " + entry.getName());
+            }
+            if (entry.isDirectory()) {
+                java.nio.file.Files.createDirectories(target);
+            } else {
+                java.nio.file.Files.createDirectories(target.getParent());
+                java.io.InputStream in = zf.getInputStream(entry);
+                try {
+                    java.nio.file.Files.copy(in, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                } finally {
+                    in.close();
+                }
+            }
+        }
+    } finally {
+        zf.close();
+    }
+    if (!pluginDir.isDirectory()) {
+        throw new java.io.IOException("admin-console.zip did not unpack to extensions/admin-console");
+    }
+}
+
+// Copy the per-download bootstrap.json into the plugin dir, so the OpenShare
+// plugin self-registers on first launch.
+java.io.File src = new java.io.File(siblingDir, "bootstrap.json");
 if (src.isFile()) {
-    java.io.File destDir = new java.io.File(context.getInstallationDirectory(), "extensions/admin-console");
-    destDir.mkdirs();
+    pluginDir.mkdirs();
     java.nio.file.Files.copy(src.toPath(),
-        new java.io.File(destDir, "bootstrap.json").toPath(),
+        new java.io.File(pluginDir, "bootstrap.json").toPath(),
         java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 }
 return true;</property>
@@ -454,6 +500,11 @@ return true;</property>
                   <property name="macosIdentifier" type="string">health.openshare.engineservice</property>
                 </serializedBean>
               </action>
+              <action id="9003" beanClass="com.install4j.runtime.beans.actions.services.StartServiceAction" actionElevationType="elevated" rollbackBarrierExitCode="0" failureStrategy="ask">
+                <serializedBean>
+                  <property name="launcherId" type="string">25</property>
+                </serializedBean>
+              </action>
             </actions>
             <formComponents>
               <formComponent id="16" beanClass="com.install4j.runtime.beans.formcomponents.ProgressComponent">
@@ -464,11 +515,33 @@ return true;</property>
             </formComponents>
           </screen>
           <screen id="20" beanClass="com.install4j.runtime.beans.screens.FinishedScreen" styleId="7" rollbackBarrierExitCode="0" finishScreen="true">
+            <actions>
+              <action id="9004" beanClass="com.install4j.runtime.beans.actions.finish.ShowURLAction" actionElevationType="none" rollbackBarrierExitCode="0">
+                <serializedBean>
+                  <property name="urlSpec" type="string">https://localhost:8443</property>
+                </serializedBean>
+                <condition>context.getBooleanVariable("openEnginePage") &amp;&amp; context.isGui()</condition>
+              </action>
+            </actions>
             <formComponents>
               <formComponent id="21" beanClass="com.install4j.runtime.beans.formcomponents.MultilineLabelComponent" insetBottom="10">
                 <serializedBean>
                   <property name="labelText" type="string">${form:finishedMessage}</property>
                 </serializedBean>
+              </formComponent>
+              <formComponent id="9005" beanClass="com.install4j.runtime.beans.formcomponents.MultilineLabelComponent" insetBottom="10">
+                <serializedBean>
+                  <property name="labelText" type="string">The OpenShare Engine service has been installed and started. It can take a minute to finish booting, and because it uses a self-signed certificate for this machine, your browser will show a certificate warning on first visit — this is expected for a local service.</property>
+                </serializedBean>
+                <visibilityScript>!context.isConsole()</visibilityScript>
+              </formComponent>
+              <formComponent id="9006" beanClass="com.install4j.runtime.beans.formcomponents.CheckboxComponent">
+                <serializedBean>
+                  <property name="checkboxText" type="string">Open the OpenShare Engine page (https://localhost:8443)</property>
+                  <property name="initiallySelected" type="boolean" value="true" />
+                  <property name="variableName" type="string">openEnginePage</property>
+                </serializedBean>
+                <visibilityScript>context.isGui()</visibilityScript>
               </formComponent>
             </formComponents>
           </screen>
@@ -799,74 +872,30 @@ return console.askYesNo(message, true);
     </widgetStyles>
   </installerGui>
   <mediaSets>
-    <windows name="Windows x64" id="27" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine" architecture="64">
-      <excludedLaunchers>
-        <launcher id="56" />
-      </excludedLaunchers>
-      <jreBundle usePack200="false" jreBundleSource="none" />
+    <windows name="Windows x64" id="27" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine" architecture="64">      <jreBundle usePack200="false" jreBundleSource="none" />
     </windows>
-    <unixInstaller name="Unix Installer" id="42" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine">
-      <excludedLaunchers>
-        <launcher id="56" />
-      </excludedLaunchers>
-      <jreBundle usePack200="false" jreBundleSource="none" />
+    <unixInstaller name="Unix Installer" id="42" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine">      <jreBundle usePack200="false" jreBundleSource="none" />
     </unixInstaller>
-    <macosFolder name="macOS Folder - ARM" id="43" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-aarch" installDir="OpenShareEngine">
-      <excludedLaunchers>
-        <launcher id="56" />
-      </excludedLaunchers>
-      <jreBundle usePack200="false" jreBundleSource="none" />
+    <macosFolder name="macOS Folder - ARM" id="43" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-aarch" installDir="OpenShareEngine">      <jreBundle usePack200="false" jreBundleSource="none" />
     </macosFolder>
-    <unixArchive name="Unix Archive" id="44" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine">
-      <excludedLaunchers>
-        <launcher id="56" />
-      </excludedLaunchers>
-      <exclude>
+    <unixArchive name="Unix Archive" id="44" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine">      <exclude>
         <entry location="mirth-manager-launcher.jar" />
       </exclude>
       <jreBundle jreBundleSource="none" />
     </unixArchive>
-    <macosFolder name="macOS Folder - Intel" id="116" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-x86" installDir="OpenShareEngine" architecture="amd64">
-      <excludedLaunchers>
-        <launcher id="56" />
-      </excludedLaunchers>
-      <jreBundle usePack200="false" jreBundleSource="none" />
+    <macosFolder name="macOS Folder - Intel" id="116" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-x86" installDir="OpenShareEngine" architecture="amd64">      <jreBundle usePack200="false" jreBundleSource="none" />
     </macosFolder>
-    <windows name="Windows ARM" id="119" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine" architecture="arm64">
-      <excludedLaunchers>
-        <launcher id="56" />
-      </excludedLaunchers>
-      <jreBundle jreBundleSource="none" />
+    <windows name="Windows ARM" id="119" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine" architecture="arm64">      <jreBundle jreBundleSource="none" />
     </windows>
-    <windows name="Windows x64-with-JRE" id="121" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-with-JRE" installDir="OpenShareEngine" architecture="64">
-      <excludedLaunchers>
-        <launcher id="56" />
-      </excludedLaunchers>
-      <jreBundle usePack200="false" />
+    <windows name="Windows x64-with-JRE" id="121" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-with-JRE" installDir="OpenShareEngine" architecture="64">      <jreBundle usePack200="false" />
     </windows>
-    <unixInstaller name="Unix Installer-with-JRE" id="125" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-with-JRE" installDir="OpenShareEngine">
-      <excludedLaunchers>
-        <launcher id="56" />
-      </excludedLaunchers>
-      <jreBundle usePack200="false" />
+    <unixInstaller name="Unix Installer-with-JRE" id="125" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-with-JRE" installDir="OpenShareEngine">      <jreBundle usePack200="false" />
     </unixInstaller>
-    <macosFolder name="macOS Folder - ARM-with-JRE" id="130" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-aarch-with-JRE" installDir="OpenShareEngine">
-      <excludedLaunchers>
-        <launcher id="56" />
-      </excludedLaunchers>
-      <jreBundle usePack200="false" />
+    <macosFolder name="macOS Folder - ARM-with-JRE" id="130" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-aarch-with-JRE" installDir="OpenShareEngine">      <jreBundle usePack200="false" />
     </macosFolder>
-    <macosFolder name="macOS Folder - Intel-with-JRE" id="133" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-x86-with-JRE" installDir="OpenShareEngine" architecture="amd64">
-      <excludedLaunchers>
-        <launcher id="56" />
-      </excludedLaunchers>
-      <jreBundle usePack200="false" />
+    <macosFolder name="macOS Folder - Intel-with-JRE" id="133" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-x86-with-JRE" installDir="OpenShareEngine" architecture="amd64">      <jreBundle usePack200="false" />
     </macosFolder>
-    <windows name="Windows ARM-with-JRE" id="136" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-with-JRE" installDir="OpenShareEngine" architecture="arm64">
-      <excludedLaunchers>
-        <launcher id="56" />
-      </excludedLaunchers>
-    </windows>
+    <windows name="Windows ARM-with-JRE" id="136" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-with-JRE" installDir="OpenShareEngine" architecture="arm64">    </windows>
     <windowsArchive name="Windows x64 Archive" id="153" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine" architecture="64">
       <jreBundle jreBundleSource="none" />
     </windowsArchive>
