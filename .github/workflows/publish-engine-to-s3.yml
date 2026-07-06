@@ -78,10 +78,25 @@ jobs:
           cd release
           RELEASED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-          # Bundled plugin version, if the provenance marker is present.
+          # Provenance marker. Sidecar releases carry plugin_sidecar=true: the
+          # media have NO baked plugin, and the manifest's pluginSidecar flag
+          # tells the contact API to pair the current signed admin-console.zip
+          # into the download wrapper. Legacy releases instead carry
+          # plugin_version=<v> — the version baked into the media.
           PLUGIN_VER=""
+          PLUGIN_SIDECAR=false
+          UPSTREAM_TAG=""
+          UPSTREAM_COMMIT=""
           if [ -f BUNDLED_PLUGIN.txt ]; then
-            PLUGIN_VER=$(grep -E '^plugin_version=' BUNDLED_PLUGIN.txt | head -1 | cut -d= -f2- || true)
+            if grep -qE '^plugin_sidecar=true$' BUNDLED_PLUGIN.txt; then
+              PLUGIN_SIDECAR=true
+            else
+              PLUGIN_VER=$(grep -E '^plugin_version=' BUNDLED_PLUGIN.txt | head -1 | cut -d= -f2- || true)
+            fi
+            # Which upstream OIE release this build corresponds to (openshare
+            # policy: branch = upstream release tag + our commits).
+            UPSTREAM_TAG=$(grep -E '^upstream_tag=' BUNDLED_PLUGIN.txt | head -1 | cut -d= -f2- || true)
+            UPSTREAM_COMMIT=$(grep -E '^upstream_commit=' BUNDLED_PLUGIN.txt | head -1 | cut -d= -f2- || true)
           fi
 
           # Release notes carried inline (repo is private; a link is useless to
@@ -140,10 +155,16 @@ jobs:
             --arg engineVersion "${version}" \
             --arg tag "$TAG" \
             --arg releasedAt "$RELEASED_AT" \
+            --argjson pluginSidecar "$PLUGIN_SIDECAR" \
             --arg bundledPluginVersion "$PLUGIN_VER" \
+            --arg upstreamTag "$UPSTREAM_TAG" \
+            --arg upstreamCommit "$UPSTREAM_COMMIT" \
             --arg releaseNotes "$NOTES" \
             '{schemaVersion:$schemaVersion, engineVersion:$engineVersion, tag:$tag, releasedAt:$releasedAt, media:.}
+             + (if $pluginSidecar then {pluginSidecar:true} else {} end)
              + (if $bundledPluginVersion == "" then {} else {bundledPluginVersion:$bundledPluginVersion} end)
+             + (if $upstreamTag == "" then {} else {upstreamTag:$upstreamTag} end)
+             + (if $upstreamCommit == "" then {} else {upstreamCommit:$upstreamCommit} end)
              + (if $releaseNotes == "" then {} else {releaseNotes:$releaseNotes} end)' \
             media.jsonl > manifest.json
           echo "----- manifest.json -----"; cat manifest.json
