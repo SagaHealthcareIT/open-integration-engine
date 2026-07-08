@@ -53,9 +53,13 @@ SETUP="$REPO_ROOT/server/setup"
 BUILD_OUT="$REPO_ROOT/server/build"
 OPENSC="/usr/lib64/opensc-pkcs11.so"
 
-# Windows x64/arm64 + Linux, no-JRE and with-JRE. macOS (43,116,130,133) is omitted
-# until Apple notarization is set up — add those ids once it is.
-MEDIA_IDS="${1:-${MEDIA_IDS:-27,119,42,121,136,125}}"
+# Windows x64/arm64 + Linux installers (no-JRE and with-JRE), plus the archive
+# media for manual installs (44 = Unix tar.gz, 153/167 = Windows x64/ARM zip —
+# upstream OIE ships these too). Archives run no installer actions, so the
+# console wrapper README gives them manual plugin/bootstrap steps instead.
+# macOS (43,116,130,133) is omitted until Apple notarization is set up — add
+# those ids once it is.
+MEDIA_IDS="${1:-${MEDIA_IDS:-27,119,42,121,136,125,44,153,167}}"
 
 # GitHub-release handoff (opt-in). When PUBLISH_RELEASE=1, the signed media +
 # their .sha256 sidecars + the provenance marker are attached to a GitHub
