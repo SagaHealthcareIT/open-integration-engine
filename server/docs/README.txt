@@ -8,6 +8,7 @@ Contents
 3. Starting Mirth Connect
 4. Running Mirth Connect in Java 9 or greater
 5. More Information
+6. Source Code Availability
 
 1. General Information
 ==================================================
@@ -69,3 +70,23 @@ If you are running Mirth Connect manually with your own Java command string, and
 You can find the latest Mirth Connect release information, documentation, and more at: https://www.nextgen.com/products-and-services/integration-engine
 
 Follow the Mirth Connect Open Source Community at: https://github.com/nextgenhealthcare/connect
+
+
+6. Source Code Availability
+==================================================
+
+This distribution is built on Open Integration Engine (a community
+continuation of Mirth Connect), which is licensed under the Mozilla Public
+License 2.0 — see LICENSE.txt in this directory. Third-party component
+licenses are listed in the thirdparty directory.
+
+In accordance with the MPL 2.0, the Source Code form of all MPL-licensed
+files in this distribution is available at no charge:
+
+  - Upstream Open Integration Engine source:
+    https://github.com/OpenIntegrationEngine/engine
+
+  - The source of any MPL-licensed files modified for this distribution is
+    available on request. Email legal@saga-it.com with the product version
+    shown in the About dialog, and the corresponding source will be
+    provided at no more than the cost of distribution.
