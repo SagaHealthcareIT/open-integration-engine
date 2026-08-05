@@ -100,7 +100,9 @@ public class HttpListenerCharacterizationTest {
 
     @AfterClass
     public static void restoreControllerFactory() throws Exception {
-        factoryField.set(null, originalFactory);
+        if (factoryField != null) {
+            factoryField.set(null, originalFactory);
+        }
     }
 
     @After
@@ -254,6 +256,8 @@ public class HttpListenerCharacterizationTest {
         assertEquals("STATIC-CONTENT", get(port, "/static?foo=bar").body());
         assertEquals(CHANNEL_RESPONSE, get(port, "/static?foo=baz").body());
         assertEquals(CHANNEL_RESPONSE, get(port, "/static").body());
+        // Matching is bidirectional set equality: an EXTRA parameter also falls through
+        assertEquals(CHANNEL_RESPONSE, get(port, "/static?foo=bar&x=1").body());
     }
 
     @Test
@@ -288,15 +292,32 @@ public class HttpListenerCharacterizationTest {
 
     @Test
     public void moreSpecificStaticContextTakesPrecedence() throws Exception {
+        /*
+         * Ordering only becomes observable when BOTH handlers would serve the same request: a
+         * DIRECTORY resource at /a containing a file "b", overlapped by a CUSTOM resource at /a/b.
+         * On 9.4 the TreeMap-descending sort puts /a/b first, so it wins; if precedence were lost
+         * (or replaced by a selection model that picks the /a context) the DIRECTORY handler would
+         * serve the file instead. This is exactly where Jetty 12's ContextHandlerCollection
+         * longest-prefix selection differs from 9.4's ordered HandlerCollection.
+         */
+        File dir = tempFolder.newFolder("outerdir");
+        Files.write(new File(dir, "b").toPath(), "OUTER-FILE".getBytes(StandardCharsets.UTF_8));
+        Files.write(new File(dir, "c").toPath(), "OUTER-C".getBytes(StandardCharsets.UTF_8));
+
         HttpReceiverProperties props = new HttpReceiverProperties();
         List<HttpStaticResource> resources = new ArrayList<HttpStaticResource>();
-        resources.add(new HttpStaticResource("/a", ResourceType.CUSTOM, "OUTER", "text/plain"));
+        resources.add(new HttpStaticResource("/a", ResourceType.DIRECTORY, dir.getAbsolutePath(), "text/plain"));
         resources.add(new HttpStaticResource("/a/b", ResourceType.CUSTOM, "INNER", "text/plain"));
         props.setStaticResources(resources);
         int port = bootReceiver(props);
 
+        // The more specific CUSTOM context wins over the DIRECTORY that could also serve /a/b
         assertEquals("INNER", get(port, "/a/b").body());
-        assertEquals("OUTER", get(port, "/a").body());
+        // The DIRECTORY genuinely serves (proves the losing handler was live, not broken)
+        assertEquals("OUTER-C", get(port, "/a/c").body());
+        // Missing file and the directory itself fall through
+        assertEquals(CHANNEL_RESPONSE, get(port, "/a/missing").body());
+        assertEquals(CHANNEL_RESPONSE, get(port, "/a").body());
     }
 
     // ---------------------------------------------------------------------

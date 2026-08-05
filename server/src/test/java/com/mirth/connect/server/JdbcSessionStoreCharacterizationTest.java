@@ -28,6 +28,7 @@ import org.eclipse.jetty.server.session.DatabaseAdaptor;
 import org.eclipse.jetty.server.session.DefaultSessionCacheFactory;
 import org.eclipse.jetty.server.session.JDBCSessionDataStore.SessionTableSchema;
 import org.eclipse.jetty.server.session.JDBCSessionDataStoreFactory;
+import org.eclipse.jetty.server.session.NullSessionCacheFactory;
 import org.eclipse.jetty.server.session.SessionCache;
 import org.eclipse.jetty.server.session.SessionDataStore;
 import org.eclipse.jetty.server.session.SessionHandler;
@@ -50,9 +51,11 @@ import org.postgresql.ds.PGSimpleDataSource;
  * table (i.e., sessions survive an engine restart). In Stage 3 this same test must pass with the
  * phase-1 rows written by Jetty 9.4 and read by Jetty 12's org.eclipse.jetty.session store.
  *
- * Unlike the other Stage 0 tests, this one necessarily imports Jetty session classes, so Stage 1's
- * mechanical import moves (org.eclipse.jetty.server.session -> org.eclipse.jetty.session /
- * ee8 servlet classes) WILL touch this file. The assertions must not change — only imports.
+ * Unlike the other Stage 0 tests, this one necessarily uses Jetty session classes, so the
+ * migration WILL touch this file: Stage 1's import moves, and in Stage 3 the wiring helpers mirror
+ * the production changes (factory calls become SessionManager-mediated, and the servlet context
+ * attaches to the server through the ee8/core bridge). The ASSERTIONS must stay frozen — only
+ * imports and wiring may change, in lockstep with MirthWebServer's own wiring.
  *
  * Requires a real Postgres (workspace rule: SQL behavior is validated against a real database, not
  * an in-memory stand-in). Skipped unless these environment variables are set:
@@ -129,8 +132,13 @@ public class JdbcSessionStoreCharacterizationTest {
         return jdbcSDSFactory;
     }
 
-    /** Mirrors MirthWebServer's per-context session wiring (cache factory + data store factory). */
-    private int startServer() throws Exception {
+    /**
+     * Mirrors MirthWebServer's per-context session wiring (cache factory + data store factory).
+     * Production selects NullSessionCacheFactory when server.api.sessioncache=none and
+     * DefaultSessionCacheFactory otherwise (MirthWebServer lines 184-194) — both modes are
+     * characterized.
+     */
+    private int startServer(boolean nullSessionCache) throws Exception {
         server = new Server();
         ServerConnector connector = new ServerConnector(server);
         connector.setHost("127.0.0.1");
@@ -140,8 +148,12 @@ public class JdbcSessionStoreCharacterizationTest {
         SessionHandler sessionHandler = new SessionHandler();
         sessionHandler.setMaxInactiveInterval(3600);
 
-        DefaultSessionCacheFactory sessionCacheFactory = new DefaultSessionCacheFactory();
-        SessionCache sessionCache = sessionCacheFactory.getSessionCache(sessionHandler);
+        SessionCache sessionCache;
+        if (nullSessionCache) {
+            sessionCache = new NullSessionCacheFactory().getSessionCache(sessionHandler);
+        } else {
+            sessionCache = new DefaultSessionCacheFactory().getSessionCache(sessionHandler);
+        }
         SessionDataStore sessionDataStore = createSessionDataStoreFactory().getSessionDataStore(sessionHandler);
         sessionCache.setSessionDataStore(sessionDataStore);
         sessionHandler.setSessionCache(sessionCache);
@@ -182,7 +194,17 @@ public class JdbcSessionStoreCharacterizationTest {
 
     @Test
     public void sessionPersistsToTableAndSurvivesServerRestart() throws Exception {
-        int port = startServer();
+        runSessionLifecycle(false);
+    }
+
+    @Test
+    public void sessionPersistsWithNullSessionCache() throws Exception {
+        // The write-through mode (server.api.sessioncache=none) — different flush timing
+        runSessionLifecycle(true);
+    }
+
+    private void runSessionLifecycle(boolean nullSessionCache) throws Exception {
+        int port = startServer(nullSessionCache);
 
         // Create a session and capture the cookie
         HttpResponse<String> setResponse = get(port, "/session/set", null);
@@ -209,7 +231,7 @@ public class JdbcSessionStoreCharacterizationTest {
 
         // A brand-new server on the same table — the engine-restart scenario — reads the session
         server.stop();
-        int newPort = startServer();
+        int newPort = startServer(nullSessionCache);
         assertNotEquals(port, newPort);
         assertEquals("SESSION-VALUE", get(newPort, "/session/get", cookie).body());
 
