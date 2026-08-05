@@ -22,18 +22,18 @@ import javax.servlet.http.HttpSession;
 import javax.sql.DataSource;
 
 import org.apache.commons.lang3.StringUtils;
+import org.eclipse.jetty.ee8.nested.SessionHandler;
+import org.eclipse.jetty.ee8.servlet.ServletContextHandler;
+import org.eclipse.jetty.ee8.servlet.ServletHolder;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
-import org.eclipse.jetty.server.session.DatabaseAdaptor;
-import org.eclipse.jetty.server.session.DefaultSessionCacheFactory;
-import org.eclipse.jetty.server.session.JDBCSessionDataStore.SessionTableSchema;
-import org.eclipse.jetty.server.session.JDBCSessionDataStoreFactory;
-import org.eclipse.jetty.server.session.NullSessionCacheFactory;
-import org.eclipse.jetty.server.session.SessionCache;
-import org.eclipse.jetty.server.session.SessionDataStore;
-import org.eclipse.jetty.server.session.SessionHandler;
-import org.eclipse.jetty.servlet.ServletContextHandler;
-import org.eclipse.jetty.servlet.ServletHolder;
+import org.eclipse.jetty.session.DatabaseAdaptor;
+import org.eclipse.jetty.session.DefaultSessionCacheFactory;
+import org.eclipse.jetty.session.JDBCSessionDataStore.SessionTableSchema;
+import org.eclipse.jetty.session.JDBCSessionDataStoreFactory;
+import org.eclipse.jetty.session.NullSessionCacheFactory;
+import org.eclipse.jetty.session.SessionCache;
+import org.eclipse.jetty.session.SessionDataStore;
 import org.junit.After;
 import org.junit.Assume;
 import org.junit.Before;
@@ -148,13 +148,14 @@ public class JdbcSessionStoreCharacterizationTest {
         SessionHandler sessionHandler = new SessionHandler();
         sessionHandler.setMaxInactiveInterval(3600);
 
+        // Jetty 12: the session factories take the SessionManager the handler wraps
         SessionCache sessionCache;
         if (nullSessionCache) {
-            sessionCache = new NullSessionCacheFactory().getSessionCache(sessionHandler);
+            sessionCache = new NullSessionCacheFactory().getSessionCache(sessionHandler.getSessionManager());
         } else {
-            sessionCache = new DefaultSessionCacheFactory().getSessionCache(sessionHandler);
+            sessionCache = new DefaultSessionCacheFactory().getSessionCache(sessionHandler.getSessionManager());
         }
-        SessionDataStore sessionDataStore = createSessionDataStoreFactory().getSessionDataStore(sessionHandler);
+        SessionDataStore sessionDataStore = createSessionDataStoreFactory().getSessionDataStore(sessionHandler.getSessionManager());
         sessionCache.setSessionDataStore(sessionDataStore);
         sessionHandler.setSessionCache(sessionCache);
 
@@ -162,7 +163,9 @@ public class JdbcSessionStoreCharacterizationTest {
         context.setContextPath("/");
         context.setSessionHandler(sessionHandler);
         context.addServlet(new ServletHolder(new SessionServlet()), "/session/*");
-        server.setHandler(context);
+        // ee8 context attaches to the core server through its CoreContextHandler bridge
+        context.setServer(server);
+        server.setHandler(context.getCoreContextHandler());
 
         server.start();
         return connector.getLocalPort();

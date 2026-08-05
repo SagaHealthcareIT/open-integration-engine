@@ -74,7 +74,7 @@
 	<classpathentry kind="lib" path="lib/bcprov-jdk18on-1.84.jar"/>
 	<classpathentry kind="lib" path="lib/bcutil-jdk18on-1.84.jar"/>
 	<classpathentry kind="lib" path="lib/commons-vfs2-2.10.0.jar"/>
-	<classpathentry kind="lib" path="lib/jetty-util-9.4.58.v20250814.jar"/>
+	<classpathentry kind="lib" path="lib/jetty-util-12.0.38.jar"/>
 	<classpathentry kind="con" path="org.eclipse.jdt.junit.JUNIT_CONTAINER/4"/>
 	<classpathentry kind="lib" path="lib/commons-codec-1.21.0.jar"/>
 	<classpathentry kind="lib" path="lib/httpcore-4.4.13.jar"/>

@@ -102,13 +102,16 @@ public class DigestAuthenticator extends Authenticator {
 
             /*
              * This splits up the Authorization header into name-value pairs and puts them into the
-             * directives map.
+             * directives map. Jetty 12 reshaped QuotedStringTokenizer into a builder-based
+             * interface; this is the equivalent of the old (header, "=, ", returnDelimiters=true,
+             * returnQuotes=false) constructor.
              */
-            QuotedStringTokenizer tokenizer = new QuotedStringTokenizer(authHeader, "=, ", true, false);
+            QuotedStringTokenizer tokenizer = QuotedStringTokenizer.builder().delimiters("=, ").returnDelimiters().build();
+            Iterator<String> tokens = tokenizer.tokenize(authHeader);
             String directive = null;
             String lastToken = null;
-            while (tokenizer.hasMoreTokens()) {
-                String token = tokenizer.nextToken();
+            while (tokens.hasNext()) {
+                String token = tokens.next();
                 char c;
                 if (token.length() == 1 && ((c = token.charAt(0)) == '=' || c == ',' || c == ' ')) {
                     if (c == '=') {

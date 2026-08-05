@@ -60,24 +60,23 @@ import org.apache.http.entity.ContentType;
 import org.apache.http.protocol.HTTP;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.eclipse.jetty.ee8.nested.AbstractHandler;
+import org.eclipse.jetty.ee8.nested.Authentication;
+import org.eclipse.jetty.ee8.nested.Authentication.User;
+import org.eclipse.jetty.ee8.nested.ContextHandler;
+import org.eclipse.jetty.ee8.nested.Handler;
+import org.eclipse.jetty.ee8.nested.HandlerCollection;
+import org.eclipse.jetty.ee8.nested.Request;
+import org.eclipse.jetty.ee8.nested.ServletConstraint;
+import org.eclipse.jetty.ee8.security.ConstraintMapping;
+import org.eclipse.jetty.ee8.security.ConstraintSecurityHandler;
+import org.eclipse.jetty.ee8.security.ServerAuthException;
+import org.eclipse.jetty.ee8.security.UserAuthentication;
 import org.eclipse.jetty.http.HttpMethod;
 import org.eclipse.jetty.http.HttpURI;
-import org.eclipse.jetty.security.AbstractLoginService.UserPrincipal;
-import org.eclipse.jetty.security.ConstraintMapping;
-import org.eclipse.jetty.security.ConstraintSecurityHandler;
-import org.eclipse.jetty.security.DefaultUserIdentity;
-import org.eclipse.jetty.security.ServerAuthException;
-import org.eclipse.jetty.security.UserAuthentication;
-import org.eclipse.jetty.server.Authentication;
-import org.eclipse.jetty.server.Authentication.User;
-import org.eclipse.jetty.server.Handler;
-import org.eclipse.jetty.server.Request;
+import org.eclipse.jetty.security.UserIdentity;
+import org.eclipse.jetty.security.UserPrincipal;
 import org.eclipse.jetty.server.Server;
-import org.eclipse.jetty.server.handler.AbstractHandler;
-import org.eclipse.jetty.server.handler.ContextHandler;
-import org.eclipse.jetty.server.handler.HandlerCollection;
-import org.eclipse.jetty.util.URIUtil;
-import org.eclipse.jetty.util.security.Constraint;
 
 import com.mirth.connect.connectors.http.HttpStaticResource.ResourceType;
 import com.mirth.connect.donkey.model.channel.ConnectorPluginProperties;
@@ -221,8 +220,17 @@ public class HttpReceiver extends SourceConnector implements BinaryContentTypeRe
             server = new Server();
             configuration.configureReceiver(this);
 
-            HandlerCollection handlers = new HandlerCollection();
-            Handler serverHandler = handlers;
+            /*
+             * Jetty 12: the per-resource ContextHandler-with-fallthrough model is gone — the core
+             * ContextHandlerCollection selects exactly one context per request. Instead the channel
+             * gets ONE ee8 ContextHandler at its context path, containing a HandlerList chain:
+             * static resource handlers (most specific path first, preserving the 9.4 ordering)
+             * followed by the main RequestHandler. Each StaticResourceHandler filters on the full
+             * request path itself and leaves the request unhandled when it can't serve it, so
+             * HandlerList's stop-on-first-handled semantics reproduce the 9.4 fallthrough exactly
+             * (characterized by HttpListenerCharacterizationTest, which must stay green).
+             */
+            List<Handler> resourceHandlers = new ArrayList<Handler>();
 
             // Add handlers for each static resource
             if (getConnectorProperties().getStaticResources() != null) {
@@ -272,27 +280,32 @@ public class HttpReceiver extends SourceConnector implements BinaryContentTypeRe
                 for (List<HttpStaticResource> staticResourcesList : staticResourcesMap.descendingMap().values()) {
                     for (HttpStaticResource staticResource : staticResourcesList) {
                         logger.debug("Adding static resource handler for context path: " + staticResource.getContextPath());
-                        ContextHandler resourceContextHandler = new ContextHandler();
-                        resourceContextHandler.setContextPath(staticResource.getContextPath());
-                        // This allows resources to be requested without a relative context path (e.g. "/")
-                        resourceContextHandler.setAllowNullPathInfo(true);
-                        resourceContextHandler.setHandler(new StaticResourceHandler(staticResource));
-                        handlers.addHandler(resourceContextHandler);
+                        resourceHandlers.add(new StaticResourceHandler(staticResource));
                     }
                 }
             }
 
-            // Add the main request handler
+            // Build the chain: static resources (most specific first), then the main request handler
+            org.eclipse.jetty.ee8.nested.HandlerList handlerChain = new org.eclipse.jetty.ee8.nested.HandlerList();
+            for (Handler resourceHandler : resourceHandlers) {
+                handlerChain.addHandler(resourceHandler);
+            }
+            handlerChain.addHandler(new RequestHandler());
+
+            // Wrap the whole chain in a security handler if needed (statics are protected too)
+            Handler channelHandler = handlerChain;
+            if (authenticatorProvider != null) {
+                channelHandler = createSecurityHandler(handlerChain);
+            }
+
+            // The channel's single ee8 context, bridged onto the core server
             ContextHandler contextHandler = new ContextHandler();
             contextHandler.setContextPath(contextPath);
-            contextHandler.setHandler(new RequestHandler());
-            handlers.addHandler(contextHandler);
-
-            // Wrap the handler collection in a security handler if needed
-            if (authenticatorProvider != null) {
-                serverHandler = createSecurityHandler(handlers);
-            }
-            server.setHandler(serverHandler);
+            // This allows resources to be requested without a relative context path (e.g. "/")
+            contextHandler.setAllowNullPathInfo(true);
+            contextHandler.setHandler(channelHandler);
+            contextHandler.setServer(server);
+            server.setHandler(contextHandler.getCoreContextHandler());
 
             logger.debug("starting HTTP server with address: " + host + ":" + port);
             server.start();
@@ -887,7 +900,7 @@ public class HttpReceiver extends SourceConnector implements BinaryContentTypeRe
             builder.append(request.getServerName());
 
             // Don't include port 80 if HTTP, or port 443 if HTTPS
-            if ((scheme.equalsIgnoreCase(URIUtil.HTTP) && port != 80) || (scheme.equalsIgnoreCase(URIUtil.HTTPS) && port != 443)) {
+            if ((scheme.equalsIgnoreCase("http") && port != 80) || (scheme.equalsIgnoreCase("https") && port != 443)) {
                 builder.append(':');
                 builder.append(port);
             }
@@ -904,16 +917,16 @@ public class HttpReceiver extends SourceConnector implements BinaryContentTypeRe
         final String authMethod;
         switch (authProps.getAuthType()) {
             case BASIC:
-                authMethod = Constraint.__BASIC_AUTH;
+                authMethod = org.eclipse.jetty.ee8.security.Authenticator.BASIC_AUTH;
                 break;
             case DIGEST:
-                authMethod = Constraint.__DIGEST_AUTH;
+                authMethod = org.eclipse.jetty.ee8.security.Authenticator.DIGEST_AUTH;
                 break;
             default:
                 authMethod = "customauth";
         }
 
-        Constraint constraint = new Constraint();
+        ServletConstraint constraint = new ServletConstraint();
         constraint.setName(authMethod);
         constraint.setRoles(new String[] { "user" });
         constraint.setAuthenticate(true);
@@ -923,7 +936,7 @@ public class HttpReceiver extends SourceConnector implements BinaryContentTypeRe
         constraintMapping.setPathSpec("/*");
 
         ConstraintSecurityHandler securityHandler = new ConstraintSecurityHandler();
-        securityHandler.setAuthenticator(new org.eclipse.jetty.security.Authenticator() {
+        securityHandler.setAuthenticator(new org.eclipse.jetty.ee8.security.Authenticator() {
             @Override
             public void setConfiguration(AuthConfiguration configuration) {}
 
@@ -986,17 +999,20 @@ public class HttpReceiver extends SourceConnector implements BinaryContentTypeRe
                     switch (result.getStatus()) {
                         case CHALLENGED:
                             response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
-                            return org.eclipse.jetty.server.Authentication.SEND_CONTINUE;
+                            return org.eclipse.jetty.ee8.nested.Authentication.SEND_CONTINUE;
                         case SUCCESS:
                             Principal userPrincipal = new UserPrincipal(StringUtils.trimToEmpty(result.getUsername()), null);
                             Subject subject = new Subject();
                             subject.getPrincipals().add(userPrincipal);
-                            return new UserAuthentication(getAuthMethod(), new DefaultUserIdentity(subject, userPrincipal, new String[] {
-                                    "user" }));
+                            /*
+                             * Public API replacement for the pre-12 DefaultUserIdentity (now in
+                             * Jetty's internal package, which we deliberately avoid).
+                             */
+                            return new UserAuthentication(getAuthMethod(), UserIdentity.from(subject, userPrincipal, "user"));
                         case FAILURE:
                         default:
                             response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
-                            return org.eclipse.jetty.server.Authentication.SEND_FAILURE;
+                            return org.eclipse.jetty.ee8.nested.Authentication.SEND_FAILURE;
                     }
                 } catch (Throwable t) {
                     logger.error("Error in HTTP authentication for " + getConnectorProperties().getName() + " (" + getConnectorProperties().getName() + " \"Source\" on channel " + getChannelId() + ").", t);

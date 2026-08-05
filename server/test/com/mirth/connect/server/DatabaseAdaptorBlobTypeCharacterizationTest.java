@@ -3,7 +3,7 @@ package com.mirth.connect.server;
 import static org.junit.Assert.assertEquals;
 
 import org.apache.commons.lang3.StringUtils;
-import org.eclipse.jetty.server.session.DatabaseAdaptor;
+import org.eclipse.jetty.session.DatabaseAdaptor;
 import org.junit.Test;
 
 /**
