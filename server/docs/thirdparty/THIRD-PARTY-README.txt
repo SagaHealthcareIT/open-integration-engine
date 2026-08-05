@@ -9,10 +9,10 @@ The following are distributed under the terms of the Apache License version 2.0
 
 	Amazon Ion Java (https://github.com/amzn/ion-java)
 	Apache Commons [incl. CLI]
-	Apache Derby 10.10.2.0
+	Apache Derby 10.17.1.0
 	Apache Geronimo (only components needed for the JMS API)
 	Apache HttpComponents 4.x [incl. CLI]
-	Apache Log4j 2.25.3 [incl. CLI]
+	Apache Log4j 2.25.4 [incl. CLI]
 	Apache PDFBox 2.0.24
 	Apache Standard Taglib 1.2.5
 	Apache Tomcat Jasper JSP Engine 8.5.70
@@ -31,11 +31,10 @@ The following are distributed under the terms of the Apache License version 2.0
 	J2ObjC Annotations 1.3 (https://github.com/google/j2objc/)
 	Jackson Project [incl. CLI] (https://github.com/FasterXML/jackson)
 	Java Native Access (JNA) 4.5.2 (https://github.com/java-native-access/jna)
-	Jetty 9.4.57
+	Jetty 9.4.58
 	Joda-Time 2.9.9
 	JSR305 Annotations for Findbugs 3.0.2 (http://findbugs.sourceforge.net/)
-	MyBatis 3.1.1
-	Netty 4.1.119
+	MyBatis 3.5.6
 	Not-Going-To-Be-Commons-SSL 0.3.18
 	Quartz Scheduler 2.3.2
 	SQLite JDBC Driver 3.43.2.1 (https://github.com/xerial/sqlite-jdbc)
@@ -73,11 +72,6 @@ terms.
 	HAPI 2.3 (source code can be downloaded at: 
 	https://github.com/hapifhir/hapi-hl7v2)
 
-	iText, a free Java-PDF library version 2.1.7 (source code can be downloaded 
-	at:
-	http://search.maven.org/remotecontent?filepath=com/lowagie/itext/2.1.7/itext
-	-2.1.7-sources.jar)
-
 	Javassist 3.26.0 [incl. CLI] (source code can be downloaded at:
 	http://www.csg.ci.i.u-tokyo.ac.jp/~chiba/javassist/)
 
@@ -93,6 +87,14 @@ terms.
 	https://github.com/mozilla/rhino)
 	This library was modified to fix some issues in XML processing, and to make
 	the debugger easier to implement.
+
+	OpenPDF 1.4.2 (source code can be downloaded at:
+	https://github.com/LibrePDF/OpenPDF)
+	Also available under the LGPL version 2.1 (see LGPL-2.1.txt).
+
+	OpenRTF 1.2.1 (source code can be downloaded at:
+	https://github.com/LibrePDF/OpenRTF)
+	Also available under the LGPL version 2.1 (see LGPL-2.1.txt).
 
 
 --------------------------------------------------------------------------------
@@ -179,7 +181,7 @@ Distribution License version 1.0 (see CDDL-1.0.txt):
 	Java Servlet API 3.1.0 (source code can be downloaded from: https://java.net
 	/projects/glassfish/sources/svn/show/tags/javax.servlet-api-3.1.0)
 	
-	Jetty Apache JSP Implementation 9.4.57 (source code can be downloaded from:
+	Jetty Apache JSP Implementation 9.4.58 (source code can be downloaded from:
 	http://download.eclipse.org/jetty/)
 
 	Swinglabs Wizard (source code can be downloaded from:
@@ -205,8 +207,8 @@ version 2.0 (see EPL-2.0.txt):
 	Eclipse Compiler For Java 3.19.0 (source code can be downloaded from:
 	http://www.eclipse.org/jdt)
 
-	Jakarta Mail API 1.6.7 (source code can be downloaded from:
-	https://github.com/eclipse-ee4j/mail/tree/1.6.7)
+	Jakarta Mail API 1.6.8 (source code can be downloaded from:
+	https://github.com/eclipse-ee4j/mail/tree/1.6.8)
 	Also available under GPLv2 with Classpath Exception (see GPLv2+CE.txt).
 
 
@@ -721,7 +723,7 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 The license below pertains to OGNL (Object-Graph Navigation Language), which is
-included within the MyBatis 3.1.1 library.
+included within the MyBatis 3.5.6 library.
 
 =================== Beginning of License ===================
 
@@ -762,7 +764,7 @@ included within the MyBatis 3.1.1 library.
 --------------------------------------------------------------------------------
 
 
-The license below pertains to the PostgreSQL JDBC Driver version 42.7.8.
+The license below pertains to the PostgreSQL JDBC Driver version 42.7.12.
 
 =================== Beginning of License ===================
 
@@ -799,7 +801,7 @@ POSSIBILITY OF SUCH DAMAGE.
 --------------------------------------------------------------------------------
 
 
-The license below pertains to XStream version 1.4.20 [incl. CLI].
+The license below pertains to XStream version 1.4.21 [incl. CLI].
 
 =================== Beginning of License ===================
 

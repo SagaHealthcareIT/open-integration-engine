@@ -12,7 +12,7 @@
 #   server. It prepares the Java environment and executes the server launcher
 #   JAR file.
 #
-#   The script automatically finds a compatible Java runtime (version 17+ by
+#   The script automatically finds a compatible Java runtime (version 21+ by
 #   default) by searching for a valid executable in the following priority order:
 #     1. The OIE_JAVA_PATH environment variable.
 #     2. The -java-cmd directive in the oieserver.vmoptions file or included
@@ -42,7 +42,7 @@
 # =============================================================================
 
 APP_ARGS=("$@")
-MIN_JAVA_VERSION=17
+MIN_JAVA_VERSION=21
 
 # Set OIE_HOME to the script directory
 OIE_HOME="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"

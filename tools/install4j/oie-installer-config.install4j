@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <install4j version="13.0" transformSequenceNumber="13">
-  <application name="OpenShare Engine" applicationId="2452-6733-0152-0496" mediaDir="${compiler:installer:mediaRoot}/server/build" shortName="oie" publisher="Saga IT, LLC" publisherWeb="https://openshare.health" version="4.6.0" backupOnSave="true" autoSave="true" macVolumeId="27d28c9f9b4fef92" javaMinVersion="17" javaMaxVersion="25">
+  <application name="OpenShare Engine" applicationId="2452-6733-0152-0496" mediaDir="${compiler:installer:mediaRoot}/server/build" shortName="oie" publisher="Saga IT, LLC" publisherWeb="https://openshare.health" version="4.6.0" backupOnSave="true" autoSave="true" macVolumeId="27d28c9f9b4fef92" javaMinVersion="21" javaMaxVersion="25">
     <variables>
       <variable name="installer:mediaRoot" value="../.." />
     </variables>
     <codeSigning windowsEnabled="true" windowsKeySource="pkcs11" windowsPkcs11Library="/usr/lib64/opensc-pkcs11.so" windowsPkcs11Slot="1" windowsCertDir="${compiler:installer:mediaRoot}/tools/install4j/signing-chain" />
-    <jreBundles jdkProviderId="Zulu" release="17/17.0.15">
+    <jreBundles jdkProviderId="Zulu" release="21/21.0.12">
       <modules>
         <defaultModules set="all" />
       </modules>
