@@ -154,6 +154,39 @@ public class MirthWebServer extends Server {
         contexts.setHandlers(current);
     }
 
+    /**
+     * Builds a static-resource context, or returns null if the directory is absent. Two Jetty 12
+     * deltas force this shape: the nested ResourceHandler no longer inherits the context's
+     * resource base for welcome files and directory listings (it must be set on the handler
+     * itself), and a nonexistent resource base is now fatal to Server.start() where 9.4 simply
+     * served 404s — so missing directories are skipped with a warning instead of registered.
+     */
+    private ContextHandler createResourceContext(String contextPath, String resourcePath, Boolean directoriesListed) {
+        if (!new File(resourcePath).isDirectory()) {
+            logger.warn("Not serving " + contextPath + " — directory does not exist: " + resourcePath);
+            return null;
+        }
+
+        ContextHandler contextHandler = new ContextHandler();
+        contextHandler.setContextPath(contextPath);
+        contextHandler.setResourceBase(resourcePath);
+
+        ResourceHandler resourceHandler = new ResourceHandler();
+        resourceHandler.setResourceBase(resourcePath);
+        if (directoriesListed != null) {
+            resourceHandler.setDirectoriesListed(directoriesListed);
+        }
+        contextHandler.setHandler(resourceHandler);
+        return contextHandler;
+    }
+
+    private void addResourceContext(String contextPath, String resourcePath, Boolean directoriesListed) {
+        ContextHandler contextHandler = createResourceContext(contextPath, resourcePath, directoriesListed);
+        if (contextHandler != null) {
+            addContext(contextHandler);
+        }
+    }
+
     public MirthWebServer(PropertiesConfiguration mirthProperties) throws Exception {
         this.mirthProperties = mirthProperties;
 
@@ -227,40 +260,19 @@ public class MirthWebServer extends Server {
         }
 
         // Create the lib context
-        ContextHandler libContextHandler = new ContextHandler();
-        libContextHandler.setContextPath(contextPath + "/webstart/client-lib");
-        libContextHandler.setResourceBase(clientLibPath);
-        libContextHandler.setHandler(new ResourceHandler());
-        addContext(libContextHandler);
+        addResourceContext(contextPath + "/webstart/client-lib", clientLibPath, null);
 
         // Create the extensions context
-        ContextHandler extensionsContextHandler = new ContextHandler();
-        extensionsContextHandler.setContextPath(contextPath + "/webstart/extensions/libs");
-        String extensionsPath = new File(ExtensionController.getExtensionsPath()).getPath();
-        extensionsContextHandler.setResourceBase(extensionsPath);
-        extensionsContextHandler.setHandler(new ResourceHandler());
-        addContext(extensionsContextHandler);
+        addResourceContext(contextPath + "/webstart/extensions/libs", new File(ExtensionController.getExtensionsPath()).getPath(), null);
 
         // Create the public_html context
-        ContextHandler publicContextHandler = new ContextHandler();
-        publicContextHandler.setContextPath(contextPath);
-        String publicPath = ControllerFactory.getFactory().createConfigurationController().getBaseDir() + File.separator + "public_html";
-        publicContextHandler.setResourceBase(publicPath);
-        publicContextHandler.setHandler(new ResourceHandler());
-        addContext(publicContextHandler);
+        addResourceContext(contextPath, ControllerFactory.getFactory().createConfigurationController().getBaseDir() + File.separator + "public_html", null);
 
         // Create Administrator Launcher installer contexts
         addLauncherInstallerContextHandlers(contextPath);
 
         // Create the javadocs context
-        ContextHandler javadocsContextHandler = new ContextHandler();
-        javadocsContextHandler.setContextPath(contextPath + "/javadocs");
-        String javadocsPath = ControllerFactory.getFactory().createConfigurationController().getBaseDir() + File.separator + "docs" + File.separator + "javadocs";
-        javadocsContextHandler.setResourceBase(javadocsPath);
-        ResourceHandler javadocsResourceHandler = new ResourceHandler();
-        javadocsResourceHandler.setDirectoriesListed(true);
-        javadocsContextHandler.setHandler(javadocsResourceHandler);
-        addContext(javadocsContextHandler);
+        addResourceContext(contextPath + "/javadocs", ControllerFactory.getFactory().createConfigurationController().getBaseDir() + File.separator + "docs" + File.separator + "javadocs", true);
 
         // Load all web apps dynamically
         webapps = new ArrayList<WebAppContext>();
@@ -328,7 +340,7 @@ public class MirthWebServer extends Server {
                  * web fragments, etc. If you omit the jar that contains the JSTL TLDs, the JSP
                  * engine will scan for them instead.
                  */
-                webapp.setAttribute("org.eclipse.jetty.server.webapp.ContainerIncludeJarPattern", ".*/[^/]*(javax\\.servlet-api|taglibs)[^/]*\\.jar$");
+                webapp.setAttribute("org.eclipse.jetty.server.webapp.ContainerIncludeJarPattern", ".*/[^/]*(jetty-servlet-api|taglibs)[^/]*\\.jar$");
 
                 logger.debug("webApp Context Path: " + webapp.getContextPath());
 
@@ -535,7 +547,10 @@ public class MirthWebServer extends Server {
         apiServletContextHandler.addServlet(swaggerVersionedServlet, contextPath + baseAPI + apiPath + "/openapi.yaml");
 
         // Add Swagger UI web page servlet
-        addContext(getSwaggerContextHandler(contextPath, baseAPI, apiAllowHTTP, null));
+        ContextHandler swaggerContextHandler = getSwaggerContextHandler(contextPath, baseAPI, apiAllowHTTP, null);
+        if (swaggerContextHandler != null) {
+            addContext(swaggerContextHandler);
+        }
         
         // Add Swagger examples servlet
         ServletContextHandler swaggerExamplesServletContextHandler = new ServletContextHandler();
@@ -550,11 +565,10 @@ public class MirthWebServer extends Server {
     }
 
     private ContextHandler getSwaggerContextHandler(String contextPath, String baseAPI, boolean apiAllowHTTP, Version version) {
-        ContextHandler swaggerContextHandler = new ContextHandler();
-        swaggerContextHandler.setContextPath(contextPath + baseAPI + (version != null ? "/" + version.toString() : ""));
-        swaggerContextHandler.setResourceBase(ControllerFactory.getFactory().createConfigurationController().getBaseDir() + File.separator + "public_api_html");
-        swaggerContextHandler.setHandler(new ResourceHandler());
-        setConnectorNames(swaggerContextHandler, apiAllowHTTP);
+        ContextHandler swaggerContextHandler = createResourceContext(contextPath + baseAPI + (version != null ? "/" + version.toString() : ""), ControllerFactory.getFactory().createConfigurationController().getBaseDir() + File.separator + "public_api_html", null);
+        if (swaggerContextHandler != null) {
+            setConnectorNames(swaggerContextHandler, apiAllowHTTP);
+        }
         return swaggerContextHandler;
     }
 

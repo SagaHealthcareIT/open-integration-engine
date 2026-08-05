@@ -240,6 +240,43 @@ public class DigestAuthenticatorCharacterizationTest {
         assertNotEquals(nonce, parseDirectives(rechallenge).get("nonce"));
     }
 
+    /*
+     * Malformed Authorization headers must yield a clean re-challenge, never a thrown exception:
+     * an exception propagates to the security handler as a 500 + ErrorEvent that any
+     * unauthenticated client could trigger. The 9.4 tokenizer parsed these leniently; Jetty 12's
+     * RFC 9110 tokenizer THROWS on them, which is why the rewrite must use the legacy() builder.
+     */
+    @Test
+    public void malformedHeaderUnterminatedQuoteRechallenges() {
+        AuthenticationResult result = authenticator.authenticate(request("GET", "/path", "Digest username=\"jo"));
+        assertEquals(AuthStatus.CHALLENGED, result.getStatus());
+    }
+
+    @Test
+    public void malformedHeaderCharactersAfterEndQuoteRechallenges() {
+        AuthenticationResult result = authenticator.authenticate(request("GET", "/path", "Digest username=\"jo\"x, realm=\"bogus\""));
+        assertEquals(AuthStatus.CHALLENGED, result.getStatus());
+    }
+
+    @Test
+    public void singleQuotedUsernameParsesAsQuoted() throws Exception {
+        // 9.4's tokenizer treated single quotes as quoting characters; legacy() preserves that
+        String trickyUser = "single quoted, user";
+        properties.getCredentialsMap().put(trickyUser, PASSWORD);
+        rebuildAuthenticator();
+        String nonce = obtainNonce("/path");
+
+        String ha1 = md5Hex(trickyUser + ":" + REALM + ":" + PASSWORD);
+        String ha2 = md5Hex("GET:/path");
+        String response = md5Hex(ha1 + ":" + nonce + ":00000001:abc123:auth:" + ha2);
+        String header = "Digest username='" + trickyUser + "', realm=\"" + REALM + "\", nonce=\"" + nonce + "\", uri=\"/path\", qop=auth, nc=00000001, cnonce=\"abc123\", response=\"" + response + "\", opaque=\"" + OPAQUE + "\", algorithm=MD5";
+
+        AuthenticationResult result = authenticator.authenticate(request("GET", "/path", header));
+
+        assertEquals(AuthStatus.SUCCESS, result.getStatus());
+        assertEquals(trickyUser, result.getUsername());
+    }
+
     @Test
     public void mismatchedUriRechallenges() throws Exception {
         String nonce = obtainNonce("/path");

@@ -106,7 +106,8 @@ public class ServerConfigurationRestorer {
          */
         try {
             multiException.ifExceptionThrow();
-        } catch (Exception aggregate) {
+        } catch (Throwable aggregate) {
+            // Throwable, not Exception: ifExceptionThrow() rethrows an Error root unchecked
             logger.error("Error restoring server configuration. ", aggregate);
             logError(aggregate);
             for (Throwable suppressed : aggregate.getSuppressed()) {
