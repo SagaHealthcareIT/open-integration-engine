@@ -11,6 +11,8 @@ package com.mirth.connect.model.converters;
 
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
 
 import com.thoughtworks.xstream.io.naming.NameCoder;
 import com.thoughtworks.xstream.io.xml.DomReader;
@@ -44,5 +46,45 @@ public class MirthDomReader extends DomReader {
 
     protected void reloadCurrentElement() {
         reassignCurrentElement(getCurrent());
+    }
+
+    /*
+     * Mirth migration code (MigratableConverter / Migratable.migrateX_X_X) mutates the DOM while
+     * XStream is reading it. XStream 1.4.20 and earlier re-collected the child element list on
+     * every reassignCurrentElement() call, so reloadCurrentElement() above was sufficient to make
+     * DOM mutations visible to the reader. XStream 1.4.21 moved child collection into a private
+     * cache (DomReader.childElements / childrenStack) that reassignCurrentElement() no longer
+     * refreshes, which caused stale child lists (e.g. UnknownFieldException on elements a migration
+     * step had removed). Overriding getChildCount()/getChild() to read directly from the live DOM
+     * restores the semantics this reader has always required.
+     */
+    @Override
+    protected int getChildCount() {
+        NodeList childNodes = ((Element) getCurrent()).getChildNodes();
+        int count = 0;
+
+        for (int i = 0; i < childNodes.getLength(); i++) {
+            if (childNodes.item(i) instanceof Element) {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    @Override
+    protected Object getChild(int index) {
+        NodeList childNodes = ((Element) getCurrent()).getChildNodes();
+        int elementIndex = -1;
+
+        for (int i = 0; i < childNodes.getLength(); i++) {
+            Node node = childNodes.item(i);
+
+            if (node instanceof Element && ++elementIndex == index) {
+                return node;
+            }
+        }
+
+        throw new IndexOutOfBoundsException("No child element at index " + index + " for element " + ((Element) getCurrent()).getTagName());
     }
 }

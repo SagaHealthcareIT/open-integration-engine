@@ -12,7 +12,7 @@
     server. It prepares the Java environment and executes the server launcher
     JAR file.
 
-    The script automatically finds a compatible Java runtime (version 17+ by
+    The script automatically finds a compatible Java runtime (version 21+ by
     default) by searching for a valid executable in the following priority order:
 
     1. The OIE_JAVA_PATH environment variable.
@@ -53,7 +53,7 @@ param(
 
 # Stop on any error and exit non-zero
 $ErrorActionPreference = "Stop"
-$MinJavaVersion = 17
+$MinJavaVersion = 21
 
 # Set OieHome to the script directory using PowerShell's built-in variable
 $OieHome = $PSScriptRoot
