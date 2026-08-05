@@ -61,7 +61,17 @@ diff baseline-9.4.txt after.txt
 STATUS and CONTENT-TYPE must never drift. SIZE is authoritative for static resources only. 404s in
 the baseline (unstaged installers, missing javadocs) are fine — the diff still catches change.
 Append install-specific paths (deployed webapps, versioned API roots) as extra arguments so they
-join the matrix.
+join the matrix. API paths are additionally probed with the `X-Requested-With` header (`[XRW]`
+rows) — the bare-request CSRF 400 and the accepted 200 are both pinned.
 
 The Stage 2 exit gate in the plan is: server boots and this matrix diffs clean against the 9.4
 baseline captured on the same install layout.
+
+## Captured baselines (`baselines/`)
+
+| File | Source | Captured |
+|---|---|---|
+| `mirth-6.baseline-9.4.txt` | Container `d2c2d07e80ef` ("mirth-6", image `sagait/engine:latest` @ `81bdeea02e8e`, admin port 8443 → host 8449) — a dev-environment engine registered to the test-admin org, with channels deployed (channels don't affect the admin server's context assembly). | 2026-08-05 |
+
+For the Stage 2 "after" run, keep the layout identical: run the migrated engine build against the
+SAME container appdata/extension estate (swap the image or binary, keep the volume), then diff.
