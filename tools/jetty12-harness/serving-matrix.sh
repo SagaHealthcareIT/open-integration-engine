@@ -58,14 +58,33 @@ PATHS=(
 # Extra paths from the command line (e.g. a deployed webapp, versioned API paths)
 PATHS+=("$@")
 
-printf '%-50s %-8s %-40s %s\n' "PATH" "STATUS" "CONTENT-TYPE" "SIZE"
+# Paths probed a second time WITH the X-Requested-With header the Mirth API requires: without it
+# the API 400s (CSRF guard) — both the rejection and the accepted response are pinned.
+XRW_PATHS=(
+    "/api/openapi.json"
+    "/api/openapi.yaml"
+)
 
-for path in "${PATHS[@]}"; do
-    result=$(curl -sk -o /dev/null -w '%{http_code} %{content_type} %{size_download}' --max-time 30 "${BASE_URL}${path}" 2>/dev/null) \
+probe() {
+    local path="$1"
+    shift
+    local result status rest content_type size
+    result=$(curl -sk -o /dev/null -w '%{http_code} %{content_type} %{size_download}' --max-time 30 "$@" "${BASE_URL}${path}" 2>/dev/null) \
         || result="CONNECT-FAILED - -"
     status="${result%% *}"
     rest="${result#* }"
     content_type="${rest% *}"
     size="${rest##* }"
-    printf '%-50s %-8s %-40s %s\n' "$path" "$status" "${content_type:--}" "$size"
+    printf '%-50s %-8s %-40s %s\n' "${LABEL_PREFIX:-}${path}" "$status" "${content_type:--}" "$size"
+}
+
+printf '%-50s %-8s %-40s %s\n' "PATH" "STATUS" "CONTENT-TYPE" "SIZE"
+
+for path in "${PATHS[@]}"; do
+    probe "$path"
+done
+
+LABEL_PREFIX="[XRW] "
+for path in "${XRW_PATHS[@]}"; do
+    probe "$path" -H "X-Requested-With: serving-matrix"
 done
