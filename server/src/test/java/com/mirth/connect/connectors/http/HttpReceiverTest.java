@@ -13,7 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.eclipse.jetty.server.Request;
+import org.eclipse.jetty.ee8.nested.Request;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mockito;

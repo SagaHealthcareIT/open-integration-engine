@@ -14,12 +14,15 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import org.eclipse.jetty.server.Request;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.eclipse.jetty.ee8.nested.AbstractHandler;
+import org.eclipse.jetty.ee8.nested.ContextHandler;
+import org.eclipse.jetty.ee8.nested.Request;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
-import org.eclipse.jetty.server.handler.AbstractHandler;
-import org.eclipse.jetty.server.handler.ContextHandler;
-import org.eclipse.jetty.server.handler.HandlerList;
+import org.eclipse.jetty.server.handler.ContextHandlerCollection;
 import org.junit.After;
 import org.junit.Test;
 
@@ -28,11 +31,11 @@ import org.junit.Test;
  * the project-mdds-llm workspace repo, section 4).
  *
  * MirthWebServer's ONLY post-assembly handler-list mutation is the startup() recovery path: if
- * start() throws (a bad webapp), it stops, removes every webapp from the HandlerList, and calls
- * start() again — the engine must come up serving everything else. This test pins that exact
- * sequence on a bare 9.4 Server + HandlerList. In Jetty 12 the handler tree becomes a core
- * ContextHandlerCollection (plan Stage 2), and this same recovery sequence — mutate the collection
- * after a failed start, then restart — must still work.
+ * start() throws (a bad webapp), it stops, removes every webapp from the handler collection, and
+ * calls start() again — the engine must come up serving everything else. Originally pinned on a
+ * bare 9.4 Server + HandlerList; now ported to the Jetty 12 shape MirthWebServer actually uses
+ * (core ContextHandlerCollection + ee8 contexts via the CoreContextHandler bridge, mutation via
+ * setHandlers — the same as MirthWebServer.addContext/removeContext). Assertions are unchanged.
  */
 public class WebServerStartupRecoveryCharacterizationTest {
 
@@ -91,13 +94,17 @@ public class WebServerStartupRecoveryCharacterizationTest {
         badContext.setContextPath("/bad");
         badContext.setHandler(new FailingOnStartHandler());
 
-        HandlerList handlers = new HandlerList();
-        handlers.addHandler(goodContext);
-        handlers.addHandler(badContext);
-        server.setHandler(handlers);
+        ContextHandlerCollection contexts = new ContextHandlerCollection();
+        goodContext.setServer(server);
+        badContext.setServer(server);
+        List<org.eclipse.jetty.server.Handler> coreHandlers = new ArrayList<org.eclipse.jetty.server.Handler>();
+        coreHandlers.add(goodContext.getCoreContextHandler());
+        coreHandlers.add(badContext.getCoreContextHandler());
+        contexts.setHandlers(coreHandlers);
+        server.setHandler(contexts);
 
         // The exact MirthWebServer.startup() sequence: start -> fail -> stop (ignore errors)
-        // -> removeHandler(bad) -> start again
+        // -> remove the bad context -> start again
         try {
             server.start();
             fail("expected start() to fail with the broken handler attached");
@@ -107,7 +114,23 @@ public class WebServerStartupRecoveryCharacterizationTest {
             server.stop();
         } catch (Throwable ignored) {
         }
-        handlers.removeHandler(badContext);
+        List<org.eclipse.jetty.server.Handler> remaining = new ArrayList<org.eclipse.jetty.server.Handler>(contexts.getHandlers());
+        remaining.remove(badContext.getCoreContextHandler());
+        contexts.setHandlers(remaining);
+
+        /*
+         * Jetty 12 regression this test caught: a failed start leaves the connector's accept
+         * channel closed but cached, so restarting the SAME connector yields a STARTED server
+         * that is not listening (getLocalPort() == -2). MirthWebServer.startup() therefore
+         * rebuilds its connectors before the retry — mirrored here. (BridgeLink's port kept the
+         * 9.4 recovery code and ships with this path broken.)
+         */
+        server.removeConnector(connector);
+        connector = new ServerConnector(server);
+        connector.setHost("127.0.0.1");
+        connector.setPort(0);
+        server.addConnector(connector);
+
         server.start();
 
         int port = connector.getLocalPort();
