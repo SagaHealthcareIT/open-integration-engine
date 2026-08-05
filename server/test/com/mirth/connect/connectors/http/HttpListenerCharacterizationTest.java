@@ -268,6 +268,32 @@ public class HttpListenerCharacterizationTest {
     }
 
     @Test
+    public void caseMismatchFallsThroughToChannel() throws Exception {
+        // 9.4's per-resource ContextHandler matched case-SENSITIVELY: /STATIC went to the channel
+        int port = bootReceiver(propsWithCustomResource("/static", "STATIC-CONTENT"));
+
+        assertEquals(CHANNEL_RESPONSE, get(port, "/STATIC").body());
+        assertEquals(CHANNEL_RESPONSE, get(port, "/Static").body());
+    }
+
+    @Test
+    public void directoryMatchIsSegmentBounded() throws Exception {
+        // /dir must never match /dirx.txt — 9.4's ContextHandler matching was segment-aware
+        File dir = tempFolder.newFolder("bounded");
+        Files.write(new File(dir, "x.txt").toPath(), "BOUNDED-FILE".getBytes(StandardCharsets.UTF_8));
+
+        HttpReceiverProperties props = new HttpReceiverProperties();
+        List<HttpStaticResource> resources = new ArrayList<HttpStaticResource>();
+        resources.add(new HttpStaticResource("/dir", ResourceType.DIRECTORY, dir.getAbsolutePath(), "text/plain"));
+        props.setStaticResources(resources);
+        int port = bootReceiver(props);
+
+        assertEquals("BOUNDED-FILE", get(port, "/dir/x.txt").body());
+        // No segment boundary: the channel gets it, the directory resource must not serve x.txt
+        assertEquals(CHANNEL_RESPONSE, get(port, "/dirx.txt").body());
+    }
+
+    @Test
     public void directoryResourceServesFilesAndFallsThroughOtherwise() throws Exception {
         File dir = tempFolder.newFolder("staticdir");
         Files.write(new File(dir, "exists.txt").toPath(), "FILE-CONTENT".getBytes(StandardCharsets.UTF_8));

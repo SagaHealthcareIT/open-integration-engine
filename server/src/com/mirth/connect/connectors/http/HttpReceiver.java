@@ -221,9 +221,11 @@ public class HttpReceiver extends SourceConnector implements BinaryContentTypeRe
             configuration.configureReceiver(this);
 
             /*
-             * Jetty 12: the per-resource ContextHandler-with-fallthrough model is gone — the core
-             * ContextHandlerCollection selects exactly one context per request. Instead the channel
-             * gets ONE ee8 ContextHandler at its context path, containing a HandlerList chain:
+             * Jetty 12: the per-resource ContextHandler-with-fallthrough model is gone. (Core
+             * ContextHandlerCollection does still fall through across same-path contexts, but the
+             * nested ResourceHandler/handler semantics changed enough that a flat chain is the
+             * reliable shape.) The channel gets ONE ee8 ContextHandler at its context path,
+             * containing a HandlerList chain:
              * static resource handlers (most specific path first, preserving the 9.4 ordering)
              * followed by the main RequestHandler. Each StaticResourceHandler filters on the full
              * request path itself and leaves the request unhandled when it can't serve it, so
@@ -676,17 +678,42 @@ public class HttpReceiver extends SourceConnector implements BinaryContentTypeRe
                 return;
             }
 
+            /*
+             * Path routing decision FIRST, before any request-message construction. In 9.4 each
+             * static resource sat in its own ContextHandler whose matching was case-sensitive and
+             * segment-aware; in the single-context chain every request reaches every handler, so
+             * that pre-filter is reproduced here: exact match for FILE/CUSTOM resources, exact
+             * match or a "/"-bounded prefix for DIRECTORY resources (so /files never matches
+             * /filesx.txt). Hoisting it also avoids building the full request message (headers,
+             * parameters, Velocity replacement) for every non-matching request.
+             */
+            String contextPath;
+            try {
+                // Decode URL-encoding, and normalize all backslashes to forward slashes
+                contextPath = StringUtils.replaceChars(URLDecoder.decode(new URL(getRequestURL(baseRequest)).getPath(), "US-ASCII"), '\\', '/');
+            } catch (Exception e) {
+                // Unparseable request URL: not ours to serve, pass to the next request handler
+                return;
+            }
+            while (contextPath.endsWith("/")) {
+                contextPath = contextPath.substring(0, contextPath.length() - 1);
+            }
+
+            if (staticResource.getResourceType() == ResourceType.DIRECTORY) {
+                if (!contextPath.equals(staticResource.getContextPath()) && !contextPath.startsWith(staticResource.getContextPath() + "/")) {
+                    return;
+                }
+            } else if (!contextPath.equals(staticResource.getContextPath())) {
+                // If we're not reading from a directory and the context path doesn't match, pass
+                // to the next request handler
+                return;
+            }
+
             String originalThreadName = Thread.currentThread().getName();
 
             try {
                 Thread.currentThread().setName("HTTP Receiver Thread on " + getChannel().getName() + " (" + getChannelId() + ") < " + originalThreadName);
                 HttpRequestMessage requestMessage = createRequestMessage(baseRequest, true);
-
-                // Decode URL-encoding, and normalize all backslashes to forward slashes
-                String contextPath = StringUtils.replaceChars(URLDecoder.decode(requestMessage.getContextPath(), "US-ASCII"), '\\', '/');
-                while (contextPath.endsWith("/")) {
-                    contextPath = contextPath.substring(0, contextPath.length() - 1);
-                }
                 logger.debug("Received static resource request at: " + contextPath);
 
                 Map<String, Object> sourceMap = new HashMap<String, Object>();
@@ -694,11 +721,6 @@ public class HttpReceiver extends SourceConnector implements BinaryContentTypeRe
 
                 String value = replacer.replaceValues(staticResource.getValue(), getChannelId(), sourceMap);
                 String contentTypeString = replacer.replaceValues(staticResource.getContentType(), getChannelId(), sourceMap);
-
-                // If we're not reading from a directory and the context path doesn't match, pass to the next request handler
-                if (staticResource.getResourceType() != ResourceType.DIRECTORY && !staticResource.getContextPath().equalsIgnoreCase(contextPath)) {
-                    return;
-                }
 
                 // If the query parameters do not match, pass to the next request handler
                 if (!parametersEqual(staticResource.getQueryParameters(), requestMessage.getParameters())) {
@@ -748,14 +770,9 @@ public class HttpReceiver extends SourceConnector implements BinaryContentTypeRe
                     File file = null;
 
                     if (parentFile.isDirectory()) {
-                        if (!StringUtils.startsWithIgnoreCase(contextPath, staticResource.getContextPath())) {
-                            // This should technically never happen as the resource is deployed at this context path.
-                            servletResponse.reset();
-                            return;
-                        }
-
                         // Use the trailing path as the child path for the actual resource directory
-                        String childPath = StringUtils.replaceChars(StringUtils.removeStartIgnoreCase(contextPath, staticResource.getContextPath()), '\\', '/');
+                        // (the segment-bounded, case-sensitive match already happened up top)
+                        String childPath = StringUtils.replaceChars(StringUtils.removeStart(contextPath, staticResource.getContextPath()), '\\', '/');
                         while (childPath.startsWith("/")) {
                             childPath = childPath.substring(1);
                         }
