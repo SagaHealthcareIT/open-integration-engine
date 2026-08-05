@@ -19,6 +19,7 @@ import org.apache.http.conn.socket.ConnectionSocketFactory;
 import org.apache.http.conn.ssl.NoopHostnameVerifier;
 import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.apache.http.ssl.SSLContexts;
+import org.eclipse.jetty.http.UriCompliance;
 import org.eclipse.jetty.server.HttpConnectionFactory;
 import org.eclipse.jetty.server.ServerConnector;
 
@@ -61,6 +62,17 @@ public class DefaultHttpConfiguration implements HttpConfiguration {
         httpConfig.setSendServerVersion(false);
         httpConfig.setSendXPoweredBy(false);
         httpConfig.setRequestHeaderSize(connector.getRequestHeaderSize());
+
+        /*
+         * Jetty 12's default UriCompliance rejects with a bare 400 — before the channel ever sees
+         * the request — URI shapes that Jetty 9.4 delivered as messages: empty path segments
+         * (//a//b), encoded slashes (%2F), encoded dot-dot, and backslashes in the path. Channel
+         * receivers stay 9.4-lenient so existing integrations don't silently lose messages; the
+         * admin/API connectors (MirthWebServer) keep the strict Jetty 12 default. The two extra
+         * violations on top of LEGACY cover backslash paths; UTF-8 and percent-encoding validity
+         * checks remain active. (2026-08-05 decision — Jetty12-Migration-Plan section 3b.)
+         */
+        httpConfig.setUriCompliance(UriCompliance.LEGACY.with("mirth-http-receiver", UriCompliance.Violation.SUSPICIOUS_PATH_CHARACTERS, UriCompliance.Violation.ILLEGAL_PATH_CHARACTERS));
         return httpConfig;
     }
 

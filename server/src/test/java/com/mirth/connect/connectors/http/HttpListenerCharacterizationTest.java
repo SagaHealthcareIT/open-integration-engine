@@ -267,6 +267,38 @@ public class HttpListenerCharacterizationTest {
         assertEquals(CHANNEL_RESPONSE, get(port, "/other").body());
     }
 
+    /**
+     * Sends a raw request line over a socket — java.net.http normalizes/rejects the sloppy URI
+     * shapes this pin exists for. Returns "STATUS-LINE|BODY".
+     */
+    private String rawGet(int port, String target) throws IOException {
+        try (java.net.Socket socket = new java.net.Socket("127.0.0.1", port)) {
+            socket.getOutputStream().write(("GET " + target + " HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.ISO_8859_1));
+            socket.getOutputStream().flush();
+            String response = new String(socket.getInputStream().readAllBytes(), StandardCharsets.ISO_8859_1);
+            String statusLine = response.split("\r\n", 2)[0];
+            int bodyIndex = response.indexOf("\r\n\r\n");
+            return statusLine + "|" + (bodyIndex >= 0 ? response.substring(bodyIndex + 4) : "");
+        }
+    }
+
+    @Test
+    public void sloppyUrisStillReachTheChannel() throws Exception {
+        /*
+         * 2026-08-05 decision (plan section 3b): channel receivers keep Jetty 9.4's lenient URI
+         * acceptance — Jetty 12's strict default would 400 these BEFORE the channel saw them,
+         * silently dropping messages from sloppy HL7-over-HTTP senders. The admin/API server
+         * keeps the strict default; this leniency is DefaultHttpConfiguration receiver-only.
+         */
+        int port = bootReceiver(new HttpReceiverProperties());
+
+        for (String target : new String[] { "//a//b", "/a%2Fb", "/a/%2e%2e/b", "/a\\b" }) {
+            String result = rawGet(port, target);
+            assertTrue(target + " -> " + result, result.startsWith("HTTP/1.1 200"));
+            assertTrue(target + " -> " + result, result.endsWith(CHANNEL_RESPONSE));
+        }
+    }
+
     @Test
     public void caseMismatchFallsThroughToChannel() throws Exception {
         // 9.4's per-resource ContextHandler matched case-SENSITIVELY: /STATIC went to the channel
