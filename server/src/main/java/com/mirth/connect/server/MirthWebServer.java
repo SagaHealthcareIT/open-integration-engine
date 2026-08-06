@@ -56,7 +56,6 @@ import org.eclipse.jetty.ee8.annotations.AnnotationConfiguration;
 import org.eclipse.jetty.ee8.nested.AbstractHandler;
 import org.eclipse.jetty.ee8.nested.ContextHandler;
 import org.eclipse.jetty.ee8.nested.Request;
-import org.eclipse.jetty.ee8.nested.ResourceHandler;
 import org.eclipse.jetty.ee8.nested.SessionHandler;
 import org.eclipse.jetty.ee8.servlet.FilterHolder;
 import org.eclipse.jetty.ee8.servlet.ServletContextHandler;
@@ -84,6 +83,7 @@ import org.eclipse.jetty.session.NullSessionDataStore;
 import org.eclipse.jetty.session.SessionCache;
 import org.eclipse.jetty.session.SessionDataStore;
 import org.eclipse.jetty.session.SessionDataStoreFactory;
+import org.eclipse.jetty.util.resource.ResourceFactory;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.glassfish.jersey.media.multipart.MultiPartFeature;
 import org.glassfish.jersey.server.ServerProperties;
@@ -130,11 +130,12 @@ public class MirthWebServer extends Server {
     private ExtensionController extensionController = ControllerFactory.getFactory().createExtensionController();
     private List<WebAppContext> webapps;
     /*
-     * Jetty 12: the handler tree is core-side. Each ee8 context attaches through its
-     * CoreContextHandler bridge into this ContextHandlerCollection (longest-prefix context
-     * selection; deployHandler/undeployHandler for runtime mutation). addContext() is the ONLY way
-     * handlers are attached — anything that isn't an ee8 ContextHandler cannot be silently
-     * dropped, it simply doesn't type-check.
+     * Jetty 12: the handler tree is core-side. Servlet/webapp contexts are ee8 and attach through
+     * their CoreContextHandler bridge; static-resource contexts are pure core (see
+     * createResourceContext for why that split is load-bearing). Both land in this
+     * ContextHandlerCollection (longest-prefix context selection, insertion order among same-path
+     * branches). addContext() is the ONLY way handlers are attached — anything that isn't an ee8
+     * or core ContextHandler cannot be silently dropped, it simply doesn't type-check.
      */
     private ContextHandlerCollection contexts;
     private ServerConnector connector;
@@ -143,8 +144,28 @@ public class MirthWebServer extends Server {
 
     private void addContext(ContextHandler contextHandler) {
         contextHandler.setServer(this);
+        addCoreHandler(contextHandler.getCoreContextHandler());
+    }
+
+    private void addContext(org.eclipse.jetty.server.handler.ContextHandler coreContextHandler) {
+        coreContextHandler.setServer(this);
+        addCoreHandler(coreContextHandler);
+    }
+
+    /*
+     * Remove-then-append: 9.4's HandlerCollection.addHandler moved an already-present handler to
+     * the END of the list, and the /api assembly depends on it — addApiServlets adds the API
+     * servlet context, then addSwaggerServlets adds the Swagger UI static context and RE-adds the
+     * API context, leaving the static context FIRST at /api. That order is what lets existing
+     * public_api_html files serve without the X-Requested-With header while everything else falls
+     * through to the API filter chain (decompiled from jetty-server-9.4.57 and probed against a
+     * live 9.4 install, 2026-08-06). A plain append here leaves the API context first and its
+     * CSRF filter swallows the Swagger UI with 400s.
+     */
+    private void addCoreHandler(org.eclipse.jetty.server.Handler handler) {
         List<org.eclipse.jetty.server.Handler> current = new ArrayList<org.eclipse.jetty.server.Handler>(contexts.getHandlers());
-        current.add(contextHandler.getCoreContextHandler());
+        current.remove(handler);
+        current.add(handler);
         contexts.setHandlers(current);
     }
 
@@ -155,33 +176,42 @@ public class MirthWebServer extends Server {
     }
 
     /**
-     * Builds a static-resource context, or returns null if the directory is absent. Two Jetty 12
-     * deltas force this shape: the nested ResourceHandler no longer inherits the context's
-     * resource base for welcome files and directory listings (it must be set on the handler
-     * itself), and a nonexistent resource base is now fatal to Server.start() where 9.4 simply
-     * served 404s — so missing directories are skipped with a warning instead of registered.
+     * Builds a static-resource context as a CORE (not ee8) context, or returns null if the
+     * directory is absent (a nonexistent resource base is fatal to Server.start() in Jetty 12
+     * where 9.4 simply served 404s — so missing directories are skipped with a warning).
+     *
+     * Core rather than ee8 is load-bearing: 9.4's ResourceHandler left unresolvable requests
+     * UNHANDLED so same-path siblings saw the misses — the WebStart servlet context behind the
+     * public_html root context (/webstart.jnlp), and the API servlet context behind the Swagger
+     * UI static context (/api, where static files serve with no X-Requested-With header and
+     * everything else falls to the API filter chain). The ee8 bridge cannot reproduce that:
+     * CoreToNestedHandler discards the nested handled/unhandled result and always reports
+     * handled, so an ee8 context swallows every request entering it. The core ResourceHandler
+     * returns unhandled on a miss, letting ContextHandlerCollection keep trying same-path
+     * siblings — pinned by WebServerSamePathFallthroughCharacterizationTest.
      */
-    private ContextHandler createResourceContext(String contextPath, String resourcePath, Boolean directoriesListed) {
+    private org.eclipse.jetty.server.handler.ContextHandler createResourceContext(String contextPath, String resourcePath, Boolean directoriesListed) {
         if (!new File(resourcePath).isDirectory()) {
             logger.warn("Not serving " + contextPath + " — directory does not exist: " + resourcePath);
             return null;
         }
 
-        ContextHandler contextHandler = new ContextHandler();
-        contextHandler.setContextPath(contextPath);
-        contextHandler.setResourceBase(resourcePath);
-
-        ResourceHandler resourceHandler = new ResourceHandler();
-        resourceHandler.setResourceBase(resourcePath);
+        org.eclipse.jetty.server.handler.ResourceHandler resourceHandler = new org.eclipse.jetty.server.handler.ResourceHandler();
+        resourceHandler.setBaseResource(ResourceFactory.of(resourceHandler).newResource(resourcePath));
         if (directoriesListed != null) {
-            resourceHandler.setDirectoriesListed(directoriesListed);
+            resourceHandler.setDirAllowed(directoriesListed);
         }
+
+        // The empty root contextPath ("") must become "/" here: the ee8 ContextHandler normalized
+        // it internally, but the core ContextHandlerCollection mapping does substring(1) on the
+        // raw path and throws on "" at start().
+        org.eclipse.jetty.server.handler.ContextHandler contextHandler = new org.eclipse.jetty.server.handler.ContextHandler(StringUtils.isEmpty(contextPath) ? "/" : contextPath);
         contextHandler.setHandler(resourceHandler);
         return contextHandler;
     }
 
     private void addResourceContext(String contextPath, String resourcePath, Boolean directoriesListed) {
-        ContextHandler contextHandler = createResourceContext(contextPath, resourcePath, directoriesListed);
+        org.eclipse.jetty.server.handler.ContextHandler contextHandler = createResourceContext(contextPath, resourcePath, directoriesListed);
         if (contextHandler != null) {
             addContext(contextHandler);
         }
@@ -454,7 +484,16 @@ public class MirthWebServer extends Server {
         HttpConfiguration config = new HttpConfiguration();
         config.setSecureScheme("https");
         config.setSecurePort(mirthProperties.getInt("https.port"));
-        config.addCustomizer(new SecureRequestCustomizer());
+        /*
+         * Jetty 12's SecureRequestCustomizer defaults sniHostCheck=true, rejecting any request
+         * whose TLS SNI doesn't match the served certificate with a bare 400 "Invalid SNI". The
+         * generated install cert (CN=oie-engine, no SANs) matches no hostname, so the strict
+         * default breaks ALL https access to a stock install. Jetty 9.4 did not enforce this;
+         * disabled for 9.4 parity (decided 2026-08-06 — Jetty12-Migration-Plan section 3.1;
+         * SslContextFactory sniRequired already defaults false, so this single flag matches the
+         * 9.4 and BridgeLink behavior).
+         */
+        config.addCustomizer(new SecureRequestCustomizer(false));
         config.setSendServerVersion(false);
         config.setSendXPoweredBy(false);
 
@@ -547,7 +586,7 @@ public class MirthWebServer extends Server {
         apiServletContextHandler.addServlet(swaggerVersionedServlet, contextPath + baseAPI + apiPath + "/openapi.yaml");
 
         // Add Swagger UI web page servlet
-        ContextHandler swaggerContextHandler = getSwaggerContextHandler(contextPath, baseAPI, apiAllowHTTP, null);
+        org.eclipse.jetty.server.handler.ContextHandler swaggerContextHandler = getSwaggerContextHandler(contextPath, baseAPI, apiAllowHTTP, null);
         if (swaggerContextHandler != null) {
             addContext(swaggerContextHandler);
         }
@@ -564,8 +603,8 @@ public class MirthWebServer extends Server {
         addContext(swaggerExamplesServletContextHandler);
     }
 
-    private ContextHandler getSwaggerContextHandler(String contextPath, String baseAPI, boolean apiAllowHTTP, Version version) {
-        ContextHandler swaggerContextHandler = createResourceContext(contextPath + baseAPI + (version != null ? "/" + version.toString() : ""), ControllerFactory.getFactory().createConfigurationController().getBaseDir() + File.separator + "public_api_html", null);
+    private org.eclipse.jetty.server.handler.ContextHandler getSwaggerContextHandler(String contextPath, String baseAPI, boolean apiAllowHTTP, Version version) {
+        org.eclipse.jetty.server.handler.ContextHandler swaggerContextHandler = createResourceContext(contextPath + baseAPI + (version != null ? "/" + version.toString() : ""), ControllerFactory.getFactory().createConfigurationController().getBaseDir() + File.separator + "public_api_html", null);
         if (swaggerContextHandler != null) {
             setConnectorNames(swaggerContextHandler, apiAllowHTTP);
         }
@@ -573,12 +612,20 @@ public class MirthWebServer extends Server {
     }
 
     private void setConnectorNames(ContextHandler contextHandler, boolean apiAllowHTTP) {
+        contextHandler.setVirtualHosts(connectorNames(apiAllowHTTP).toArray(new String[0]));
+    }
+
+    private void setConnectorNames(org.eclipse.jetty.server.handler.ContextHandler contextHandler, boolean apiAllowHTTP) {
+        contextHandler.setVirtualHosts(connectorNames(apiAllowHTTP));
+    }
+
+    private List<String> connectorNames(boolean apiAllowHTTP) {
         List<String> connectorNames = new ArrayList<String>();
         connectorNames.add("@" + CONNECTOR_SSL);
         if (apiAllowHTTP) {
             connectorNames.add("@" + CONNECTOR);
         }
-        contextHandler.setVirtualHosts(connectorNames.toArray(new String[connectorNames.size()]));
+        return connectorNames;
     }
 
     private class ApiProviders {
@@ -861,7 +908,8 @@ public class MirthWebServer extends Server {
 
         @Override
         public void handle(String target, Request baseRequest, HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException {
-            // Only allow GET/HEAD requests, otherwise pass to the next request handler
+            // Only allow GET/HEAD requests. Left unhandled, the ee8 bridge dead-ends the request
+            // (probed: 405; 9.4 fell through the handler list to a 404 — either way an error).
             if (!baseRequest.getMethod().equalsIgnoreCase(HttpMethod.GET.asString()) && !baseRequest.getMethod().equalsIgnoreCase(HttpMethod.HEAD.asString())) {
                 return;
             }
