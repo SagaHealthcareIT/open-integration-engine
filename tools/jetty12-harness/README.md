@@ -75,3 +75,34 @@ baseline captured on the same install layout.
 
 For the Stage 2 "after" run, keep the layout identical: run the migrated engine build against the
 SAME container appdata/extension estate (swap the image or binary, keep the volume), then diff.
+
+## `session-gate.sh` — Stage 3 session persistence
+
+```
+./session-gate.sh <postgres|mysql|sqlserver|oracle> <default|none>
+```
+
+Proves the JDBC session store survives the migration on a real database, end to end and
+unattended. One run stands up a throwaway database container, then:
+
+1. boots a **9.4 engine** (`sagait/engine:4.6.0-ubuntu`) against it with
+   `server.api.sessionstore=true` — it creates the schema and a login writes a real session row;
+2. restarts that engine and re-uses the cookie — proves the store works *before* the migration,
+   so a later failure can't be blamed on a store that never worked;
+3. stops it, boots the **Jetty 12 build** from `server/setup/` against the SAME database, and
+   re-uses the SAME cookie — **this is the compatibility claim**: a row written by 9.4 read by 12;
+4. restarts the Jetty 12 engine and re-uses the cookie again.
+
+Any step failing prints `GATE FAIL <db>/<cache>` and stops. Derby is not scripted — it was
+verified in place on the mirth-6 container (see the plan's Stage 3 table).
+
+Notes worth keeping:
+- The 9.4 side runs in Docker on ports 19080/19443; the Jetty 12 side runs locally from
+  `server/setup/` on 18080/18443 and **edits that install's `conf/mirth.properties`** — it is
+  build output, so this is disposable, but don't be surprised to find it pointed at MySQL.
+- `database.driver` is always written (empty when unused): a previous run's driver otherwise
+  lingers in the shared install and gets handed to the next database.
+- **No `&` in JDBC URLs.** `engine-docker`'s entrypoint substitutes env vars with `sed` and
+  escapes only `/`, so an unescaped `&` expands to the whole matched line and corrupts
+  `mirth.properties`. That is a real engine-docker bug; the harness sidesteps it.
+- SQL Server has no `MSSQL_DATABASE` env — the script creates `mirthdb` with `sqlcmd` first.
