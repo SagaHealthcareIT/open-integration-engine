@@ -65,7 +65,6 @@ import org.eclipse.jetty.ee8.nested.Authentication;
 import org.eclipse.jetty.ee8.nested.Authentication.User;
 import org.eclipse.jetty.ee8.nested.ContextHandler;
 import org.eclipse.jetty.ee8.nested.Handler;
-import org.eclipse.jetty.ee8.nested.HandlerCollection;
 import org.eclipse.jetty.ee8.nested.Request;
 import org.eclipse.jetty.ee8.nested.ServletConstraint;
 import org.eclipse.jetty.ee8.security.ConstraintMapping;
