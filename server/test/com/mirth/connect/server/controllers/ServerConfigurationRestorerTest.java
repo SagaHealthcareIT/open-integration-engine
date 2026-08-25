@@ -38,7 +38,7 @@ import java.util.Properties;
 import java.util.Set;
 
 import org.apache.commons.io.IOUtils;
-import org.eclipse.jetty.util.MultiException;
+import org.eclipse.jetty.util.ExceptionUtil.MultiException;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.mockito.ArgumentMatcher;
@@ -122,8 +122,7 @@ public class ServerConfigurationRestorerTest {
             restorer.restoreServerConfiguration(config, deploy, overwriteConfigMap);
             fail("Exception should have been thrown");
         } catch (ControllerException e) {
-            MultiException multi = (MultiException) e.getCause();
-            assertEquals(1, multi.size());
+            assertEquals(1, errorCount(e.getCause()));
         }
 
         verify(restorer, times(1)).restoreChannelGroups(eq(config), any());
@@ -225,7 +224,7 @@ public class ServerConfigurationRestorerTest {
         ChannelController channelController = restorer.getChannelController();
         doThrow(ControllerException.class).when(channelController).updateChannelGroups(any(), any(), anyBoolean());
         restorer.restoreChannelGroups(config, multiException);
-        assertEquals(1, multiException.size());
+        assertEquals(1, errorCount(multiException));
     }
 
     @Test
@@ -258,7 +257,7 @@ public class ServerConfigurationRestorerTest {
 
         restorer.restoreChannels(config, multiException);
 
-        assertEquals(2, multiException.size());
+        assertEquals(2, errorCount(multiException));
     }
 
     @Test
@@ -278,7 +277,7 @@ public class ServerConfigurationRestorerTest {
         doThrow(new RuntimeException(new ControllerException("exception"))).when(engineController).undeployChannels(any(), any(), any());
         MultiException multiException = new MultiException();
         restorer.undeployChannels(multiException);
-        assertEquals(1, multiException.size());
+        assertEquals(1, errorCount(multiException));
     }
 
     @Test
@@ -306,7 +305,7 @@ public class ServerConfigurationRestorerTest {
         MultiException multiException = new MultiException();
         restorer.removeChannels(config1, multiException);
 
-        assertEquals(2, multiException.size());
+        assertEquals(2, errorCount(multiException));
     }
 
     @Test
@@ -322,7 +321,7 @@ public class ServerConfigurationRestorerTest {
         doThrow(ControllerException.class).when(channelController).removeChannel(any(), any());
         MultiException multiException = new MultiException();
         restorer.removeChannel(channel, multiException);
-        assertEquals(1, multiException.size());
+        assertEquals(1, errorCount(multiException));
     }
 
     @Test
@@ -346,7 +345,7 @@ public class ServerConfigurationRestorerTest {
         MultiException multiException = new MultiException();
         restorer.updateChannels(config1, multiException);
 
-        assertEquals(5, multiException.size());
+        assertEquals(5, errorCount(multiException));
     }
 
     @Test
@@ -362,7 +361,7 @@ public class ServerConfigurationRestorerTest {
         doThrow(ControllerException.class).when(channelController).updateChannel(any(), any(), anyBoolean(), any());
         MultiException multiException = new MultiException();
         restorer.updateChannel(channel, multiException);
-        assertEquals(1, multiException.size());
+        assertEquals(1, errorCount(multiException));
     }
 
     @Test
@@ -393,7 +392,7 @@ public class ServerConfigurationRestorerTest {
         MultiException multiException = new MultiException();
         restorer.restoreAlerts(config1, multiException);
 
-        assertEquals(2, multiException.size());
+        assertEquals(2, errorCount(multiException));
     }
 
     @Test
@@ -427,7 +426,7 @@ public class ServerConfigurationRestorerTest {
         MultiException multiException = new MultiException();
         restorer.removeExistingAlerts(multiException);
 
-        assertEquals(3, multiException.size());
+        assertEquals(3, errorCount(multiException));
     }
 
     @Test
@@ -445,7 +444,7 @@ public class ServerConfigurationRestorerTest {
         doThrow(new ControllerException("test")).when(alertController).removeAlert(alert.getId());
         MultiException multiException = new MultiException();
         restorer.removeExistingAlert(alert, multiException);
-        assertEquals(1, multiException.size());
+        assertEquals(1, errorCount(multiException));
     }
 
     @Test
@@ -470,7 +469,7 @@ public class ServerConfigurationRestorerTest {
         MultiException multiException = new MultiException();
         restorer.updateNewAlerts(config, multiException);
 
-        assertEquals(3, multiException.size());
+        assertEquals(3, errorCount(multiException));
     }
 
     @Test
@@ -488,7 +487,7 @@ public class ServerConfigurationRestorerTest {
         doThrow(ControllerException.class).when(alertController).updateAlert(alert);
         MultiException multiException = new MultiException();
         restorer.updateNewAlert(alert, multiException);
-        assertEquals(1, multiException.size());
+        assertEquals(1, errorCount(multiException));
     }
 
     @Test
@@ -520,7 +519,7 @@ public class ServerConfigurationRestorerTest {
 
         restorer.restoreCodeTemplateLibraries(config, multiException);
 
-        assertEquals(2, multiException.size());
+        assertEquals(2, errorCount(multiException));
     }
 
     @Test
@@ -540,7 +539,7 @@ public class ServerConfigurationRestorerTest {
         CodeTemplateController codeTemplateController = restorer.getCodeTemplateController();
         doThrow(ControllerException.class).when(codeTemplateController).updateLibraries(any(), any(), anyBoolean());
         restorer.updateCodeTemplateLibraries(config, multiException);
-        assertEquals(1, multiException.size());
+        assertEquals(1, errorCount(multiException));
     }
 
     @Test
@@ -567,7 +566,7 @@ public class ServerConfigurationRestorerTest {
         CodeTemplateController codeTemplateController = restorer.getCodeTemplateController();
         doThrow(ControllerException.class).when(codeTemplateController).getCodeTemplates(any());
         restorer.removeCodeTemplates(config, multiException);
-        assertEquals(2, multiException.size());
+        assertEquals(2, errorCount(multiException));
     }
 
     @Test
@@ -584,7 +583,7 @@ public class ServerConfigurationRestorerTest {
         CodeTemplateController codeTemplateController = restorer.getCodeTemplateController();
         doThrow(ControllerException.class).when(codeTemplateController).removeCodeTemplate(anyString(), any());
         restorer.removeCodeTemplate(codeTemplate, multiException);
-        assertEquals(1, multiException.size());
+        assertEquals(1, errorCount(multiException));
     }
 
     @Test
@@ -616,7 +615,7 @@ public class ServerConfigurationRestorerTest {
             }
         }).when(restorer).updateNewCodeTemplate(any(), any());
         restorer.updateNewCodeTemplates(config, multiException);
-        assertEquals(4, multiException.size());
+        assertEquals(4, errorCount(multiException));
     }
 
     @Test
@@ -633,7 +632,7 @@ public class ServerConfigurationRestorerTest {
         CodeTemplateController codeTemplateController = restorer.getCodeTemplateController();
         doThrow(ControllerException.class).when(codeTemplateController).updateCodeTemplate(any(), any(), anyBoolean());
         restorer.updateNewCodeTemplate(codeTemplate, multiException);
-        assertEquals(1, multiException.size());
+        assertEquals(1, errorCount(multiException));
     }
 
     @Test
@@ -656,7 +655,7 @@ public class ServerConfigurationRestorerTest {
         ConfigurationController configurationController = restorer.getConfigurationController();
         doThrow(ControllerException.class).when(configurationController).setConfigurationProperties(any(), anyBoolean());
         restorer.restoreConfigurationMap(config, true, multiException);
-        assertEquals(1, multiException.size());
+        assertEquals(1, errorCount(multiException));
     }
 
     @Test
@@ -677,7 +676,7 @@ public class ServerConfigurationRestorerTest {
         ConfigurationController configurationController = restorer.getConfigurationController();
         doThrow(ControllerException.class).when(configurationController).setServerSettings(any());
         restorer.restoreServerSettings(config, multiException);
-        assertEquals(1, multiException.size());
+        assertEquals(1, errorCount(multiException));
     }
 
     @Test
@@ -697,7 +696,7 @@ public class ServerConfigurationRestorerTest {
         ConfigurationController configurationController = restorer.getConfigurationController();
         doThrow(ControllerException.class).when(configurationController).setUpdateSettings(any());
         restorer.restoreUpdateSettings(config, multiException);
-        assertEquals(1, multiException.size());
+        assertEquals(1, errorCount(multiException));
     }
 
     @Test
@@ -715,11 +714,11 @@ public class ServerConfigurationRestorerTest {
         for (Entry<String, Properties> pluginEntry : config.getPluginProperties().entrySet()) {
             verify(restorer, times(1)).restorePluginProperties(eq(pluginEntry.getKey()), eq(pluginEntry.getValue()), any());
         }
-        assertEquals(0, multiException.size());
+        assertEquals(0, errorCount(multiException));
 
         doThrow(new RuntimeException(new ControllerException("exception"))).when(restorer).restorePluginProperties(anyString(), any(), any());
         restorer.restorePluginProperties(config, multiException);
-        assertEquals(2, multiException.size());
+        assertEquals(2, errorCount(multiException));
     }
 
     @Test
@@ -753,7 +752,7 @@ public class ServerConfigurationRestorerTest {
         ExtensionController extensionController = restorer.getExtensionController();
         doThrow(ControllerException.class).when(extensionController).setPluginProperties(anyString(), any());
         restorer.restorePluginProperties(pluginName, properties, multiException);
-        assertEquals(1, multiException.size());
+        assertEquals(1, errorCount(multiException));
     }
 
     @Test
@@ -782,7 +781,7 @@ public class ServerConfigurationRestorerTest {
         ContextFactoryController contextFactoryController = restorer.getContextFactoryController();
         doThrow(ControllerException.class).when(contextFactoryController).updateResources(any(), anyBoolean());
         restorer.restoreResourceProperties(config, multiException);
-        assertEquals(1, multiException.size());
+        assertEquals(1, errorCount(multiException));
     }
 
     @Test
@@ -802,7 +801,7 @@ public class ServerConfigurationRestorerTest {
         ConfigurationController configurationController = restorer.getConfigurationController();
         doThrow(new RuntimeException(new ControllerException("exception"))).when(configurationController).setChannelDependencies(any());
         restorer.restoreChannelDependencies(config, multiException);
-        assertEquals(1, multiException.size());
+        assertEquals(1, errorCount(multiException));
     }
 
     @Test
@@ -822,7 +821,7 @@ public class ServerConfigurationRestorerTest {
         ConfigurationController configurationController = restorer.getConfigurationController();
         doThrow(new RuntimeException(new ControllerException("exception"))).when(configurationController).setChannelTags(any());
         restorer.restoreChannelTags(config, multiException);
-        assertEquals(1, multiException.size());
+        assertEquals(1, errorCount(multiException));
     }
 
     @Test
@@ -842,7 +841,7 @@ public class ServerConfigurationRestorerTest {
         ScriptController scriptController = restorer.getScriptController();
         doThrow(ControllerException.class).when(scriptController).setGlobalScripts(any());
         restorer.restoreGlobalScripts(config, multiException);
-        assertEquals(1, multiException.size());
+        assertEquals(1, errorCount(multiException));
     }
 
     @Test
@@ -865,7 +864,7 @@ public class ServerConfigurationRestorerTest {
         EngineController engineController = restorer.getEngineController();
         doThrow(new RuntimeException(new ControllerException("exception"))).when(engineController).deployChannels(any(), any(), any(), any());
         restorer.deployAllChannels(deploy, multiException);
-        assertEquals(1, multiException.size());
+        assertEquals(1, errorCount(multiException));
     }
 
     private ServerConfigurationRestorer createRestorer() {
@@ -920,4 +919,32 @@ public class ServerConfigurationRestorerTest {
             super("test", "type");
         }
     }
+
+    /*
+     * Jetty 12's ExceptionUtil.MultiException has no size()/getThrowables(); the count is
+     * recovered from ifExceptionThrow()'s aggregate (first error + the rest suppressed). The old
+     * 9.4 MultiException.add() FLATTENED nested MultiExceptions into one list; the Jetty 12
+     * aggregate nests a sub-restore's errors as suppressed-of-suppressed instead, so the count
+     * walks the suppressed tree recursively to preserve the original totals.
+     */
+    private static int errorCount(MultiException multiException) {
+        try {
+            multiException.ifExceptionThrow();
+            return 0;
+        } catch (Throwable aggregate) {
+            return errorCount(aggregate);
+        }
+    }
+
+    private static int errorCount(Throwable aggregate) {
+        if (aggregate == null) {
+            return 0;
+        }
+        int count = 1;
+        for (Throwable suppressed : aggregate.getSuppressed()) {
+            count += errorCount(suppressed);
+        }
+        return count;
+    }
+
 }

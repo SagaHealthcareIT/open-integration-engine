@@ -102,13 +102,20 @@ public class DigestAuthenticator extends Authenticator {
 
             /*
              * This splits up the Authorization header into name-value pairs and puts them into the
-             * directives map.
+             * directives map. Jetty 12 reshaped QuotedStringTokenizer into a builder-based
+             * interface; legacy() is REQUIRED to reproduce the old (header, "=, ",
+             * returnDelimiters=true, returnQuotes=false) constructor — without it the RFC 9110
+             * tokenizer THROWS on malformed headers (unterminated quote, characters after an end
+             * quote) that 9.4 parsed leniently, turning a clean 401 re-challenge into a 500 with
+             * an error event any unauthenticated client can trigger. allowSingleQuote() restores
+             * the old tokenizer's treatment of '...' as a quoting form.
              */
-            QuotedStringTokenizer tokenizer = new QuotedStringTokenizer(authHeader, "=, ", true, false);
+            QuotedStringTokenizer tokenizer = QuotedStringTokenizer.builder().legacy().allowSingleQuote().delimiters("=, ").returnDelimiters().build();
+            Iterator<String> tokens = tokenizer.tokenize(authHeader);
             String directive = null;
             String lastToken = null;
-            while (tokenizer.hasMoreTokens()) {
-                String token = tokenizer.nextToken();
+            while (tokens.hasNext()) {
+                String token = tokens.next();
                 char c;
                 if (token.length() == 1 && ((c = token.charAt(0)) == '=' || c == ',' || c == ' ')) {
                     if (c == '=') {

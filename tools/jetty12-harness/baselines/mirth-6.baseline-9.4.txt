@@ -1,0 +1,18 @@
+PATH                                               STATUS   CONTENT-TYPE                             SIZE
+/                                                  200      text/html                                3814
+/webstart.jnlp                                     200      application/x-java-jnlp-file;charset=utf-8 17951
+/webstart/client-lib/mirth-client.jar              200      application/java-archive                 3037837
+/webstart/client-lib/mirth-client-core.jar         200      application/java-archive                 880894
+/webstart/extensions/libs/                         200      text/html;charset=utf-8                  9291
+/javadocs/                                         200      text/html;charset=utf-8                  656
+/launcher/macos                                    404      text/html;charset=iso-8859-1             437
+/launcher/linux                                    404      text/html;charset=iso-8859-1             437
+/launcher/windows                                  404      text/html;charset=iso-8859-1             439
+/launcher/windows-x64                              404      text/html;charset=iso-8859-1             443
+/api/                                              200      text/html                                8861
+/api/openapi.json                                  400      text/html;charset=iso-8859-1             572
+/api/openapi.yaml                                  400      text/html;charset=iso-8859-1             572
+/apiexamples/                                      200      text/plain;charset=iso-8859-1            16
+/jetty12-harness-definitely-missing                404      text/html;charset=iso-8859-1             457
+[XRW] /api/openapi.json                            200      application/json                         335356
+[XRW] /api/openapi.yaml                            200      application/yaml                         449685

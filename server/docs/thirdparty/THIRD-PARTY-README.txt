@@ -31,7 +31,7 @@ The following are distributed under the terms of the Apache License version 2.0
 	J2ObjC Annotations 1.3 (https://github.com/google/j2objc/)
 	Jackson Project [incl. CLI] (https://github.com/FasterXML/jackson)
 	Java Native Access (JNA) 4.5.2 (https://github.com/java-native-access/jna)
-	Jetty 9.4.58
+	Jetty 12.0.38
 	Joda-Time 2.9.9
 	JSR305 Annotations for Findbugs 3.0.2 (http://findbugs.sourceforge.net/)
 	MyBatis 3.5.6
@@ -39,7 +39,7 @@ The following are distributed under the terms of the Apache License version 2.0
 	Quartz Scheduler 2.3.2
 	SQLite JDBC Driver 3.43.2.1 (https://github.com/xerial/sqlite-jdbc)
 	StAXON 1.3 [incl. CLI] (https://github.com/beckchr/staxon)
-	Swagger Core 2.0.10 [incl. CLI] (https://github.com/swagger-api/swagger-core)
+	Swagger Core 2.2.31 [incl. CLI] (https://github.com/swagger-api/swagger-core)
 	Swagger UI 2.2.10 (http://swagger.io/swagger-ui/)
 	webdavclient4j 0.92 (http://sourceforge.net/projects/webdavclient4j/)
 	Zip4j 1.3.3 (http://www.lingala.net/zip4j/)
@@ -178,10 +178,7 @@ Distribution License version 1.1 (see CDDL-1.1.txt):
 The following are distributed under the terms of the Common Development and
 Distribution License version 1.0 (see CDDL-1.0.txt):
 
-	Java Servlet API 3.1.0 (source code can be downloaded from: https://java.net
-	/projects/glassfish/sources/svn/show/tags/javax.servlet-api-3.1.0)
-	
-	Jetty Apache JSP Implementation 9.4.58 (source code can be downloaded from:
+	Jetty Apache JSP Implementation 9.0.102 (source code can be downloaded from:
 	http://download.eclipse.org/jetty/)
 
 	Swinglabs Wizard (source code can be downloaded from:
@@ -206,6 +203,10 @@ version 2.0 (see EPL-2.0.txt):
 
 	Eclipse Compiler For Java 3.19.0 (source code can be downloaded from:
 	http://www.eclipse.org/jdt)
+
+	Jetty Servlet API 4.0.6 (source code can be downloaded from:
+	https://github.com/jetty/jetty.toolchain)
+	Also available under the Apache License version 2.0 (see APACHE-LICENSE-2.0.txt).
 
 	Jakarta Mail API 1.6.8 (source code can be downloaded from:
 	https://github.com/eclipse-ee4j/mail/tree/1.6.8)
