@@ -9,6 +9,10 @@
 
 package com.mirth.connect.server.migration;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -30,6 +34,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.mirth.commons.encryption.Digester;
 import com.mirth.connect.client.core.Version;
 import com.mirth.connect.model.Channel;
 import com.mirth.connect.model.ExportClearable;
@@ -38,6 +43,7 @@ import com.mirth.connect.model.codetemplates.CodeTemplate;
 import com.mirth.connect.model.codetemplates.CodeTemplateLibrary;
 import com.mirth.connect.model.converters.ObjectXMLSerializer;
 import com.mirth.connect.model.util.MigrationException;
+import com.mirth.connect.server.controllers.ControllerFactory;
 import com.mirth.connect.server.util.DatabaseUtil;
 
 public class ServerMigrator extends Migrator {
@@ -267,8 +273,61 @@ public class ServerMigrator extends Migrator {
                 DbUtils.closeQuietly(statement);
             }
 
+            /*
+             * OpenShare: optionally replace the seeded 'admin'/'admin' credential with an initial
+             * admin password supplied through the environment, BEFORE any network listener is
+             * opened. This runs only here, on the one-time schema build for an empty database, so
+             * the default seed is never a live credential when a password is provided. When neither
+             * the env var nor the file is set this is a no-op and the shipped 'admin'/'admin' seed
+             * is preserved exactly as before (dev/docker/on-prem default is unchanged).
+             *
+             * The engine's own Digester is used (initializeSecuritySettings() runs before migrate()
+             * in Mirth.startup()), so the stored hash matches what the login path verifies against -
+             * no external replication of the PBKDF2 scheme. The initial user is PERSON_ID = 1.
+             */
+            String initialAdminPassword = readInitialAdminPassword();
+            if (StringUtils.isNotBlank(initialAdminPassword)) {
+                PreparedStatement passwordStatement = null;
+                try {
+                    Digester digester = ControllerFactory.getFactory().createConfigurationController().getDigester();
+                    passwordStatement = getConnection().prepareStatement("UPDATE PERSON_PASSWORD SET PASSWORD = ?, PASSWORD_DATE = ? WHERE PERSON_ID = 1");
+                    passwordStatement.setString(1, digester.digest(initialAdminPassword));
+                    passwordStatement.setTimestamp(2, new Timestamp(System.currentTimeMillis()));
+                    passwordStatement.executeUpdate();
+                    logger.info("Initial admin password set from the environment on first database initialization.");
+                } catch (SQLException e) {
+                    throw new MigrationException(e);
+                } finally {
+                    DbUtils.closeQuietly(passwordStatement);
+                }
+            }
+
             updateVersion(Version.getLatest());
         }
+    }
+
+    /**
+     * Reads the optional initial admin password used to replace the default 'admin' seed on the
+     * first database initialization. A file reference (MIRTH_INITIAL_ADMIN_PASSWORD_FILE) is
+     * preferred over the direct value (MIRTH_INITIAL_ADMIN_PASSWORD) because a file can be given
+     * tight permissions and does not appear in the process environment. Returns null when neither
+     * is set, in which case the shipped default seed is left untouched.
+     */
+    private String readInitialAdminPassword() {
+        String filePath = System.getenv("MIRTH_INITIAL_ADMIN_PASSWORD_FILE");
+        if (StringUtils.isNotBlank(filePath)) {
+            try {
+                Path path = Paths.get(filePath);
+                String value = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+                // Strip a single trailing newline that editors/echo commonly append; do not strip
+                // other whitespace, which could be intentional in a password.
+                return StringUtils.stripEnd(value, "\r\n");
+            } catch (Exception e) {
+                logger.error("Could not read MIRTH_INITIAL_ADMIN_PASSWORD_FILE; leaving the default admin seed in place.", e);
+                return null;
+            }
+        }
+        return System.getenv("MIRTH_INITIAL_ADMIN_PASSWORD");
     }
 
     /**
