@@ -265,6 +265,15 @@ public class ServerMigrator extends Migrator {
              * was requested, in which case the shipped seed is preserved exactly as before
              * (dev/docker/on-prem default unchanged); it THROWS if a password was requested but
              * cannot be turned into a usable hash.
+             *
+             * Residual (accepted) window: because DDL here is not transactional (autocommit on,
+             * and MySQL/Oracle auto-commit DDL regardless), a hard process kill AFTER the seed
+             * commit (line below) but BEFORE the final password UPDATE would leave the default
+             * credential live and, since CONFIGURATION now exists, non-retryable. Hashing up front
+             * shrinks that window to a couple of by-primary-key writes; it cannot be closed
+             * entirely without transactional schema creation the engine's migration path does not
+             * provide. The final UPDATE below asserts it changed exactly one row so a mis-seed can
+             * never silently leave the default live.
              */
             String initialAdminHash = resolveInitialAdminHash();
 
@@ -290,9 +299,10 @@ public class ServerMigrator extends Migrator {
             /*
              * Apply the pre-computed hash to the seeded admin (PERSON_ID = 1 -- hardcoded by the
              * seed on derby/postgres/mysql/sqlserver, first sequence value on oracle). Only a
-             * by-primary-key UPDATE remains here, on the same connection that just seeded, so a
-             * failure is highly unlikely; it still aborts (fail closed) rather than silently
-             * leaving the default credential live.
+             * by-primary-key UPDATE remains here, on the same connection that just seeded. The
+             * affected row count is checked: if it is ever not exactly 1 (e.g. a future seed
+             * changes the admin id) we abort (fail closed) rather than log success and leave the
+             * default credential live.
              */
             if (initialAdminHash != null) {
                 PreparedStatement passwordStatement = null;
@@ -300,7 +310,10 @@ public class ServerMigrator extends Migrator {
                     passwordStatement = getConnection().prepareStatement("UPDATE PERSON_PASSWORD SET PASSWORD = ?, PASSWORD_DATE = ? WHERE PERSON_ID = 1");
                     passwordStatement.setString(1, initialAdminHash);
                     passwordStatement.setTimestamp(2, new Timestamp(System.currentTimeMillis()));
-                    passwordStatement.executeUpdate();
+                    int updated = passwordStatement.executeUpdate();
+                    if (updated != 1) {
+                        throw new MigrationException("Initial admin password UPDATE affected " + updated + " rows (expected 1) -- the seeded admin row was not where expected; refusing to leave the default admin credential live.");
+                    }
                     logger.info("Initial admin password set from the environment on first database initialization.");
                 } catch (SQLException e) {
                     throw new MigrationException(e);
