@@ -330,28 +330,10 @@ public class ServerMigrator extends Migrator {
      * verifies against.
      */
     private String resolveInitialAdminHash() throws MigrationException {
-        String filePath = System.getenv("MIRTH_INITIAL_ADMIN_PASSWORD_FILE");
-        boolean fromFile = StringUtils.isNotBlank(filePath);
-        String password;
-
-        if (fromFile) {
-            try {
-                password = normalizeInitialPassword(new String(Files.readAllBytes(Paths.get(filePath)), StandardCharsets.UTF_8));
-            } catch (Exception e) {
-                throw new MigrationException("Initial admin password file (MIRTH_INITIAL_ADMIN_PASSWORD_FILE) could not be read; refusing to initialize the database with the default admin credential.", e);
-            }
-        } else {
-            String envValue = System.getenv("MIRTH_INITIAL_ADMIN_PASSWORD");
-            if (envValue == null) {
-                return null; // not requested -- preserve the shipped default seed
-            }
-            password = normalizeInitialPassword(envValue);
+        String password = resolveInitialAdminPassword(System.getenv("MIRTH_INITIAL_ADMIN_PASSWORD_FILE"), System.getenv("MIRTH_INITIAL_ADMIN_PASSWORD"));
+        if (password == null) {
+            return null; // not requested -- preserve the shipped default seed
         }
-
-        if (StringUtils.isBlank(password)) {
-            throw new MigrationException("An initial admin password was requested (MIRTH_INITIAL_ADMIN_PASSWORD" + (fromFile ? "_FILE" : "") + ") but resolved to a blank value; refusing to initialize the database with the default admin credential.");
-        }
-
         try {
             Digester digester = ControllerFactory.getFactory().createConfigurationController().getDigester();
             return digester.digest(password);
@@ -363,11 +345,43 @@ public class ServerMigrator extends Migrator {
     }
 
     /**
+     * Resolves the plaintext initial admin password from the (file-path, direct-value) pair, or
+     * returns null when neither is set (not requested). Env-agnostic and package-private so it can
+     * be unit-tested directly, separate from the env read and the digest step. The file reference
+     * is authoritative when set (no fall back to the direct value, so the operator's intent is not
+     * silently masked). FAILS CLOSED: throws MigrationException when a password WAS requested but
+     * cannot be produced -- an unreadable file or a value that normalizes to blank -- so the caller
+     * never proceeds to initialize the database with the default admin credential.
+     */
+    static String resolveInitialAdminPassword(String filePath, String directValue) throws MigrationException {
+        boolean fromFile = StringUtils.isNotBlank(filePath);
+        String password;
+
+        if (fromFile) {
+            try {
+                password = normalizeInitialPassword(new String(Files.readAllBytes(Paths.get(filePath)), StandardCharsets.UTF_8));
+            } catch (Exception e) {
+                throw new MigrationException("Initial admin password file (MIRTH_INITIAL_ADMIN_PASSWORD_FILE) could not be read; refusing to initialize the database with the default admin credential.", e);
+            }
+        } else {
+            if (directValue == null) {
+                return null; // not requested -- preserve the shipped default seed
+            }
+            password = normalizeInitialPassword(directValue);
+        }
+
+        if (StringUtils.isBlank(password)) {
+            throw new MigrationException("An initial admin password was requested (MIRTH_INITIAL_ADMIN_PASSWORD" + (fromFile ? "_FILE" : "") + ") but resolved to a blank value; refusing to initialize the database with the default admin credential.");
+        }
+        return password;
+    }
+
+    /**
      * Strips a single trailing newline (an editor/`echo`-appended "\n", optionally preceded by a
      * "\r") from an initial password value, applied identically to the file and env-var sources so
      * the same secret yields the same password from either. Any other whitespace is left intact.
      */
-    private String normalizeInitialPassword(String value) {
+    static String normalizeInitialPassword(String value) {
         if (value == null) {
             return null;
         }
