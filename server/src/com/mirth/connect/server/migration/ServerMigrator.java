@@ -254,6 +254,20 @@ public class ServerMigrator extends Migrator {
     private void initDatabase(Connection connection) throws MigrationException {
         // If missing this table we can assume that they don't have the schema installed
         if (!DatabaseUtil.tableExists(connection, "CONFIGURATION")) {
+            /*
+             * OpenShare: resolve and hash the optional initial admin password FIRST, before the
+             * schema (and its default 'admin'/'admin' seed) is committed. The connection runs with
+             * autocommit on, so the seed below is durable the instant it executes; doing all of the
+             * failure-prone work (reading the file, validating the value, PBKDF2 hashing) up front
+             * means a misconfiguration FAILS CLOSED on a still-empty database -- no listener opens
+             * on the default credential, and because nothing was committed the next boot re-runs
+             * initDatabase cleanly. resolveInitialAdminHash returns null when no initial password
+             * was requested, in which case the shipped seed is preserved exactly as before
+             * (dev/docker/on-prem default unchanged); it THROWS if a password was requested but
+             * cannot be turned into a usable hash.
+             */
+            String initialAdminHash = resolveInitialAdminHash();
+
             executeScript("/" + getDatabaseType() + "/" + getDatabaseType() + "-database.sql");
 
             /*
@@ -274,24 +288,17 @@ public class ServerMigrator extends Migrator {
             }
 
             /*
-             * OpenShare: optionally replace the seeded 'admin'/'admin' credential with an initial
-             * admin password supplied through the environment, BEFORE any network listener is
-             * opened. This runs only here, on the one-time schema build for an empty database, so
-             * the default seed is never a live credential when a password is provided. When neither
-             * the env var nor the file is set this is a no-op and the shipped 'admin'/'admin' seed
-             * is preserved exactly as before (dev/docker/on-prem default is unchanged).
-             *
-             * The engine's own Digester is used (initializeSecuritySettings() runs before migrate()
-             * in Mirth.startup()), so the stored hash matches what the login path verifies against -
-             * no external replication of the PBKDF2 scheme. The initial user is PERSON_ID = 1.
+             * Apply the pre-computed hash to the seeded admin (PERSON_ID = 1 -- hardcoded by the
+             * seed on derby/postgres/mysql/sqlserver, first sequence value on oracle). Only a
+             * by-primary-key UPDATE remains here, on the same connection that just seeded, so a
+             * failure is highly unlikely; it still aborts (fail closed) rather than silently
+             * leaving the default credential live.
              */
-            String initialAdminPassword = readInitialAdminPassword();
-            if (StringUtils.isNotBlank(initialAdminPassword)) {
+            if (initialAdminHash != null) {
                 PreparedStatement passwordStatement = null;
                 try {
-                    Digester digester = ControllerFactory.getFactory().createConfigurationController().getDigester();
                     passwordStatement = getConnection().prepareStatement("UPDATE PERSON_PASSWORD SET PASSWORD = ?, PASSWORD_DATE = ? WHERE PERSON_ID = 1");
-                    passwordStatement.setString(1, digester.digest(initialAdminPassword));
+                    passwordStatement.setString(1, initialAdminHash);
                     passwordStatement.setTimestamp(2, new Timestamp(System.currentTimeMillis()));
                     passwordStatement.executeUpdate();
                     logger.info("Initial admin password set from the environment on first database initialization.");
@@ -307,27 +314,70 @@ public class ServerMigrator extends Migrator {
     }
 
     /**
-     * Reads the optional initial admin password used to replace the default 'admin' seed on the
-     * first database initialization. A file reference (MIRTH_INITIAL_ADMIN_PASSWORD_FILE) is
-     * preferred over the direct value (MIRTH_INITIAL_ADMIN_PASSWORD) because a file can be given
-     * tight permissions and does not appear in the process environment. Returns null when neither
-     * is set, in which case the shipped default seed is left untouched.
+     * Resolves the optional initial admin password and returns its engine-digested hash, or null
+     * when no initial password was requested (neither env var set). A file reference
+     * (MIRTH_INITIAL_ADMIN_PASSWORD_FILE) is preferred over the direct value
+     * (MIRTH_INITIAL_ADMIN_PASSWORD) because a file can be given tight permissions and does not
+     * appear in the process environment; when the file variable is set it is authoritative (no
+     * fall back to the direct value, so the operator's intent is never silently masked).
+     * <p>
+     * FAILS CLOSED: if a password WAS requested but cannot be turned into a usable hash -- file
+     * missing/unreadable, blank value, or a hashing error -- this throws MigrationException so the
+     * database is never initialized with the default 'admin'/'admin' credential. Called before the
+     * seed is committed (see initDatabase), so the failure aborts on an empty database and is
+     * retryable on the next boot. The engine's own Digester is used (initializeSecuritySettings()
+     * runs before migrate() in Mirth.startup()), so the stored hash matches what the login path
+     * verifies against.
      */
-    private String readInitialAdminPassword() {
+    private String resolveInitialAdminHash() throws MigrationException {
         String filePath = System.getenv("MIRTH_INITIAL_ADMIN_PASSWORD_FILE");
-        if (StringUtils.isNotBlank(filePath)) {
+        boolean fromFile = StringUtils.isNotBlank(filePath);
+        String password;
+
+        if (fromFile) {
             try {
-                Path path = Paths.get(filePath);
-                String value = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
-                // Strip a single trailing newline that editors/echo commonly append; do not strip
-                // other whitespace, which could be intentional in a password.
-                return StringUtils.stripEnd(value, "\r\n");
+                password = normalizeInitialPassword(new String(Files.readAllBytes(Paths.get(filePath)), StandardCharsets.UTF_8));
             } catch (Exception e) {
-                logger.error("Could not read MIRTH_INITIAL_ADMIN_PASSWORD_FILE; leaving the default admin seed in place.", e);
-                return null;
+                throw new MigrationException("Initial admin password file (MIRTH_INITIAL_ADMIN_PASSWORD_FILE) could not be read; refusing to initialize the database with the default admin credential.", e);
             }
+        } else {
+            String envValue = System.getenv("MIRTH_INITIAL_ADMIN_PASSWORD");
+            if (envValue == null) {
+                return null; // not requested -- preserve the shipped default seed
+            }
+            password = normalizeInitialPassword(envValue);
         }
-        return System.getenv("MIRTH_INITIAL_ADMIN_PASSWORD");
+
+        if (StringUtils.isBlank(password)) {
+            throw new MigrationException("An initial admin password was requested (MIRTH_INITIAL_ADMIN_PASSWORD" + (fromFile ? "_FILE" : "") + ") but resolved to a blank value; refusing to initialize the database with the default admin credential.");
+        }
+
+        try {
+            Digester digester = ControllerFactory.getFactory().createConfigurationController().getDigester();
+            return digester.digest(password);
+        } catch (Exception e) {
+            // Digester.digest throws EncryptionException (a RuntimeException), which the SQL
+            // catches in initDatabase would NOT handle; wrap it here so startup fails closed.
+            throw new MigrationException("Failed to hash the supplied initial admin password; refusing to initialize the database with the default admin credential.", e);
+        }
+    }
+
+    /**
+     * Strips a single trailing newline (an editor/`echo`-appended "\n", optionally preceded by a
+     * "\r") from an initial password value, applied identically to the file and env-var sources so
+     * the same secret yields the same password from either. Any other whitespace is left intact.
+     */
+    private String normalizeInitialPassword(String value) {
+        if (value == null) {
+            return null;
+        }
+        if (value.endsWith("\r\n")) {
+            return value.substring(0, value.length() - 2);
+        }
+        if (value.endsWith("\n")) {
+            return value.substring(0, value.length() - 1);
+        }
+        return value;
     }
 
     /**
