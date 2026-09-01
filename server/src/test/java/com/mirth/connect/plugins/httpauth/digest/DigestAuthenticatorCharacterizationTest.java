@@ -105,7 +105,11 @@ public class DigestAuthenticatorCharacterizationTest {
     }
 
     private static String md5Hex(String input) throws Exception {
-        byte[] digest = MessageDigest.getInstance("MD5").digest(input.getBytes(StandardCharsets.ISO_8859_1));
+        return md5Hex(input, StandardCharsets.UTF_8);
+    }
+
+    private static String md5Hex(String input, java.nio.charset.Charset charset) throws Exception {
+        byte[] digest = MessageDigest.getInstance("MD5").digest(input.getBytes(charset));
         StringBuilder builder = new StringBuilder();
         for (byte b : digest) {
             builder.append(String.format("%02x", b));
@@ -282,6 +286,47 @@ public class DigestAuthenticatorCharacterizationTest {
         String nonce = obtainNonce("/path");
 
         AuthenticationResult result = authenticator.authenticate(request("GET", "/path", qopAuthHeader(USERNAME, PASSWORD, "/other", nonce, "00000001", "abc123")));
+
+        assertEquals(AuthStatus.CHALLENGED, result.getStatus());
+    }
+
+    // ---------------------------------------------------------------------
+    // Credential charset — the server hashes UTF-8 (RFC 7616), never ISO-8859-1.
+    // Under ISO-8859-1 every code point above U+00FF encoded to '?' before hashing, so a
+    // password and its '?'-substituted ASCII skeleton produced identical digests: an attacker
+    // knowing only the username could authenticate against any non-Latin-1 password (the same
+    // bug Jetty patched in its DigestAuthenticator in 12.0.36), and a correct RFC 7616 client
+    // could never log in.
+    // ---------------------------------------------------------------------
+
+    @Test
+    public void nonLatin1PasswordAuthenticatesForUtf8Client() throws Exception {
+        String password = "café☕secret"; // é (Latin-1) + ☕ (U+2615, outside Latin-1)
+        properties.getCredentialsMap().put(USERNAME, password);
+        rebuildAuthenticator();
+        String nonce = obtainNonce("/path");
+
+        AuthenticationResult result = authenticator.authenticate(request("GET", "/path", qopAuthHeader(USERNAME, password, "/path", nonce, "00000001", "abc123")));
+
+        assertEquals(AuthStatus.SUCCESS, result.getStatus());
+    }
+
+    @Test
+    public void questionMarkSkeletonOfNonLatin1PasswordIsRejected() throws Exception {
+        String password = "café☕secret";
+        properties.getCredentialsMap().put(USERNAME, password);
+        rebuildAuthenticator();
+        String nonce = obtainNonce("/path");
+
+        // The attack: substitute '?' for each non-Latin-1 code point and hash as ISO-8859-1 —
+        // exactly the bytes the vulnerable server hashed for the REAL password.
+        String skeleton = "café?secret";
+        String ha1 = md5Hex(USERNAME + ":" + REALM + ":" + skeleton, StandardCharsets.ISO_8859_1);
+        String ha2 = md5Hex("GET:/path", StandardCharsets.ISO_8859_1);
+        String response = md5Hex(ha1 + ":" + nonce + ":00000001:abc123:auth:" + ha2, StandardCharsets.ISO_8859_1);
+        String header = "Digest username=\"" + USERNAME + "\", realm=\"" + REALM + "\", nonce=\"" + nonce + "\", uri=\"/path\", qop=auth, nc=00000001, cnonce=\"abc123\", response=\"" + response + "\", opaque=\"" + OPAQUE + "\", algorithm=MD5";
+
+        AuthenticationResult result = authenticator.authenticate(request("GET", "/path", header));
 
         assertEquals(AuthStatus.CHALLENGED, result.getStatus());
     }

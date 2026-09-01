@@ -391,7 +391,7 @@ public class DigestAuthenticator extends Authenticator {
     /**
      * Calculates the MD5 digest for all objects passed in, concatenated with ':'. InputStreams will
      * be read in and updated directly via a byte buffer. Any other object will be converted to a
-     * String updated with the equivalent ISO-8859-1 representation.
+     * String updated with the equivalent UTF-8 representation.
      */
     private String digest(Object... parts) throws NoSuchAlgorithmException, IOException {
         MessageDigest md = MessageDigest.getInstance("MD5");
@@ -407,7 +407,13 @@ public class DigestAuthenticator extends Authenticator {
             } else if (parts[i] instanceof byte[]) {
                 md.update((byte[]) parts[i]);
             } else {
-                md.update(String.valueOf(parts[i]).getBytes(StandardCharsets.ISO_8859_1));
+                /*
+                 * UTF-8, not ISO-8859-1 (RFC 7616): the ISO-8859-1 encoder coerces every code
+                 * point above U+00FF to '?', so all passwords sharing an ASCII skeleton hashed
+                 * identically — the same auth-bypass Jetty patched in its own DigestAuthenticator
+                 * in 12.0.36.
+                 */
+                md.update(String.valueOf(parts[i]).getBytes(StandardCharsets.UTF_8));
             }
 
             if (i < parts.length - 1) {
