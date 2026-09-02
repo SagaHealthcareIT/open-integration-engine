@@ -119,22 +119,18 @@ public class DICOMSerializer implements IMessageSerializer {
                             renameTagToAttr(document, nodeItem);
                         }
                     }
-                }
-            }
 
-            /*
-             * dcm4che2's XML round trip is asymmetric for sequences read from implicit-VR private
-             * tags: SAXWriter emits the wire VR (vr="UN" len="-1") with structured <item>
-             * children, but ContentHandlerAdapter only enters its sequence state for vr="SQ" and
-             * otherwise expects fragments, throwing IllegalStateException("state:EXPECT_FRAG")
-             * when a dataset item arrives. DicomInputStream already treats such elements as SQ in
-             * memory, so present them to the parser the same way. Only items holding renamed
-             * <attr> children mark a dataset sequence; fragment containers (encapsulated pixel
-             * data, whose items hold only base64/hex text) are left untouched.
-             */
-            if (items != null) {
-                for (int i = 0; i < items.getLength(); i++) {
-                    Node itemNode = items.item(i);
+                    /*
+                     * dcm4che2's XML round trip is asymmetric for sequences read from implicit-VR
+                     * private tags: SAXWriter emits the wire VR (vr="UN" len="-1") with structured
+                     * <item> children, but ContentHandlerAdapter only enters its sequence state for
+                     * vr="SQ" and otherwise expects fragments, throwing
+                     * IllegalStateException("state:EXPECT_FRAG") when a dataset item arrives.
+                     * DicomInputStream already promotes such elements to SQ in memory, so present
+                     * them to the parser the same way. Only items holding renamed <attr> children
+                     * mark a dataset sequence; fragment containers (encapsulated pixel data, whose
+                     * items hold only base64/hex text) are left untouched.
+                     */
                     Node parentNode = itemNode.getParentNode();
 
                     if (parentNode instanceof Element && hasAttrElementChild(itemNode)) {
