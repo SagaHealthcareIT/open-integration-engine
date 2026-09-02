@@ -117,9 +117,11 @@ public class DICOMSerializerUnSequenceTest {
     private String writeDicomFile(BasicDicomObject dcm, String transferSyntaxUid) throws Exception {
         dcm.initFileMetaInformation(transferSyntaxUid);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        DicomOutputStream dos = new DicomOutputStream(baos);
-        dos.writeDicomFile(dcm);
-        dos.close();
+
+        try (DicomOutputStream dos = new DicomOutputStream(baos)) {
+            dos.writeDicomFile(dcm);
+        }
+
         return Base64.encodeBase64String(baos.toByteArray());
     }
 
