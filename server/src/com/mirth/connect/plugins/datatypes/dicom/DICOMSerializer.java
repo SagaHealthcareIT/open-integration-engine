@@ -14,7 +14,9 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 
 import javax.xml.XMLConstants;
 import javax.xml.parsers.SAXParser;
@@ -105,6 +107,7 @@ public class DICOMSerializer implements IMessageSerializer {
             }
 
             NodeList items = document.getElementsByTagName("item");
+            Set<Element> sequenceElements = new LinkedHashSet<>();
 
             // change back to <attr> tag for all tags under <item> tags
             if (items != null) {
@@ -120,26 +123,32 @@ public class DICOMSerializer implements IMessageSerializer {
                         }
                     }
 
-                    /*
-                     * dcm4che2's XML round trip is asymmetric for sequences read from implicit-VR
-                     * private tags: SAXWriter emits the wire VR (vr="UN" len="-1") with structured
-                     * <item> children, but ContentHandlerAdapter only enters its sequence state for
-                     * vr="SQ" and otherwise expects fragments, throwing
-                     * IllegalStateException("state:EXPECT_FRAG") when a dataset item arrives.
-                     * DicomInputStream already promotes such elements to SQ in memory, so present
-                     * them to the parser the same way. Only items holding renamed <attr> children
-                     * mark a dataset sequence; fragment containers (encapsulated pixel data, whose
-                     * items hold only base64/hex text) are left untouched.
-                     */
+                    // An <item> holding elements is a dataset item, so its container is a sequence.
                     Node parentNode = itemNode.getParentNode();
 
-                    if (parentNode instanceof Element && hasAttrElementChild(itemNode)) {
-                        Element parentElement = (Element) parentNode;
-
-                        if (parentElement.hasAttribute("vr") && !parentElement.getAttribute("vr").equals("SQ")) {
-                            parentElement.setAttribute("vr", "SQ");
-                        }
+                    if (parentNode instanceof Element && hasElementChild(itemNode)) {
+                        sequenceElements.add((Element) parentNode);
                     }
+                }
+            }
+
+            /*
+             * dcm4che2's XML round trip is asymmetric for sequences read from implicit-VR private
+             * tags: SAXWriter emits the wire VR (vr="UN" len="-1") with structured <item> children,
+             * but ContentHandlerAdapter only enters its sequence state for vr="SQ" and otherwise
+             * expects fragments, throwing IllegalStateException("state:EXPECT_FRAG") when a dataset
+             * item arrives. DicomInputStream already promotes such elements to SQ in memory, so
+             * present them to the parser the same way. Fragment containers (encapsulated pixel data,
+             * whose items hold only base64/hex text) never qualify. A container mixing text items
+             * and dataset items is left alone as well: promoting it would make the parser silently
+             * discard the text items, so it keeps failing loudly instead.
+             *
+             * The rewrite runs after the item loop because setAttribute invalidates the live
+             * NodeList being iterated (the DOM re-walks the document on the next access).
+             */
+            for (Element sequenceElement : sequenceElements) {
+                if (!sequenceElement.getAttribute("vr").equals("SQ") && !hasTextItem(sequenceElement)) {
+                    sequenceElement.setAttribute("vr", "SQ");
                 }
             }
 
@@ -230,10 +239,32 @@ public class DICOMSerializer implements IMessageSerializer {
         }
     }
 
-    private boolean hasAttrElementChild(Node node) {
+    private boolean hasElementChild(Node node) {
         for (Node child = node.getFirstChild(); child != null; child = child.getNextSibling()) {
-            if (child.getNodeType() == Node.ELEMENT_NODE && child.getNodeName().equals("attr")) {
+            if (child.getNodeType() == Node.ELEMENT_NODE) {
                 return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * True when any direct <item> child of the element carries non-whitespace text, i.e. an
+     * encoded fragment rather than a dataset.
+     */
+    private boolean hasTextItem(Element element) {
+        for (Node item = element.getFirstChild(); item != null; item = item.getNextSibling()) {
+            if (item.getNodeType() != Node.ELEMENT_NODE || !item.getNodeName().equals("item")) {
+                continue;
+            }
+
+            for (Node child = item.getFirstChild(); child != null; child = child.getNextSibling()) {
+                short type = child.getNodeType();
+
+                if ((type == Node.TEXT_NODE || type == Node.CDATA_SECTION_NODE) && !child.getNodeValue().trim().isEmpty()) {
+                    return true;
+                }
             }
         }
 

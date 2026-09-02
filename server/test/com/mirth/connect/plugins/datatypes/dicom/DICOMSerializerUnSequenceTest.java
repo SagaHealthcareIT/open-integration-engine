@@ -5,14 +5,21 @@ package com.mirth.connect.plugins.datatypes.dicom;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 
 import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.transform.OutputKeys;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
 
 import org.apache.commons.codec.binary.Base64;
 import org.dcm4che2.data.BasicDicomObject;
@@ -28,6 +35,7 @@ import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
+import com.mirth.connect.donkey.model.message.MessageSerializerException;
 import com.mirth.connect.model.converters.DICOMConverter;
 
 /**
@@ -44,17 +52,7 @@ public class DICOMSerializerUnSequenceTest {
 
     @Test
     public void testUndefinedLengthUnSequenceRoundTrip() throws Exception {
-        BasicDicomObject dcm = new BasicDicomObject();
-        dcm.putString(Tag.SOPClassUID, VR.UI, UID.SecondaryCaptureImageStorage);
-        dcm.putString(Tag.SOPInstanceUID, VR.UI, "1.2.3.4.5.6.7.8.9");
-        dcm.putString(Tag.PatientName, VR.PN, "TEST^PATIENT");
-        dcm.putBytes(PRIVATE_BLOB_TAG, VR.UN, BLOB_BYTES);
-
-        BasicDicomObject item = new BasicDicomObject();
-        item.putString(Tag.CodeValue, VR.SH, "VALUE1");
-        dcm.putNestedDicomObject(PRIVATE_SEQUENCE_TAG, item);
-
-        String base64 = writeDicomFile(dcm, UID.ImplicitVRLittleEndian);
+        String base64 = writeDicomFile(buildUnSequenceObject(), UID.ImplicitVRLittleEndian);
 
         DICOMSerializer serializer = new DICOMSerializer();
         String xml = serializer.toXML(base64);
@@ -114,6 +112,59 @@ public class DICOMSerializerUnSequenceTest {
         assertArrayEquals(fragment, resultPixelData.getFragment(1));
     }
 
+    @Test
+    public void testStructuredSequenceWithoutVrIsPromoted() throws Exception {
+        // Hand-edited XML (e.g. from a transformer) may omit vr on a private container; the parser
+        // would then dictionary-resolve the tag to UN and hit the same EXPECT_FRAG crash.
+        Document document = parse(new DICOMSerializer().toXML(writeDicomFile(buildUnSequenceObject(), UID.ImplicitVRLittleEndian)));
+        Element sequenceElement = findElementByTag(document, "0029E131");
+        sequenceElement.removeAttribute("vr");
+
+        String roundTripped = new DICOMSerializer().fromXML(serialize(document));
+
+        DicomObject result = DICOMConverter.byteArrayToDicomObject(Base64.decodeBase64(roundTripped), false);
+        DicomObject resultItem = result.getNestedDicomObject(PRIVATE_SEQUENCE_TAG);
+        assertNotNull("private sequence lost in round trip", resultItem);
+        assertEquals("VALUE1", resultItem.getString(Tag.CodeValue));
+    }
+
+    @Test
+    public void testMixedTextAndDatasetItemsAreNotPromoted() throws Exception {
+        // A UN container whose items mix encoded fragments (text) and datasets (elements) cannot be
+        // represented as SQ without dropping the text items, so it must keep failing loudly.
+        Document document = parse(new DICOMSerializer().toXML(writeDicomFile(buildUnSequenceObject(), UID.ImplicitVRLittleEndian)));
+        Element sequenceElement = findElementByTag(document, "0029E131");
+        Element textItem = document.createElement("item");
+        textItem.setTextContent("AQIDBA==");
+        sequenceElement.insertBefore(textItem, sequenceElement.getElementsByTagName("item").item(0));
+
+        try {
+            new DICOMSerializer().fromXML(serialize(document));
+            fail("mixed container was promoted; the text item would have been silently discarded");
+        } catch (MessageSerializerException e) {
+            Throwable cause = e;
+
+            while (cause.getCause() != null) {
+                cause = cause.getCause();
+            }
+
+            assertTrue("unexpected failure: " + cause, cause instanceof IllegalStateException && String.valueOf(cause.getMessage()).contains("EXPECT_FRAG"));
+        }
+    }
+
+    private BasicDicomObject buildUnSequenceObject() {
+        BasicDicomObject dcm = new BasicDicomObject();
+        dcm.putString(Tag.SOPClassUID, VR.UI, UID.SecondaryCaptureImageStorage);
+        dcm.putString(Tag.SOPInstanceUID, VR.UI, "1.2.3.4.5.6.7.8.9");
+        dcm.putString(Tag.PatientName, VR.PN, "TEST^PATIENT");
+        dcm.putBytes(PRIVATE_BLOB_TAG, VR.UN, BLOB_BYTES);
+
+        BasicDicomObject item = new BasicDicomObject();
+        item.putString(Tag.CodeValue, VR.SH, "VALUE1");
+        dcm.putNestedDicomObject(PRIVATE_SEQUENCE_TAG, item);
+        return dcm;
+    }
+
     private String writeDicomFile(BasicDicomObject dcm, String transferSyntaxUid) throws Exception {
         dcm.initFileMetaInformation(transferSyntaxUid);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -136,9 +187,10 @@ public class DICOMSerializerUnSequenceTest {
     }
 
     private Element findElementByTag(String xml, String tag) throws Exception {
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-        Document document = factory.newDocumentBuilder().parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
+        return findElementByTag(parse(xml), tag);
+    }
+
+    private Element findElementByTag(Document document, String tag) {
         NodeList elements = document.getElementsByTagName("*");
 
         for (int i = 0; i < elements.getLength(); i++) {
@@ -150,5 +202,19 @@ public class DICOMSerializerUnSequenceTest {
         }
 
         return null;
+    }
+
+    private Document parse(String xml) throws Exception {
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        return factory.newDocumentBuilder().parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    private String serialize(Document document) throws Exception {
+        Transformer transformer = TransformerFactory.newInstance().newTransformer();
+        transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes");
+        StringWriter writer = new StringWriter();
+        transformer.transform(new DOMSource(document), new StreamResult(writer));
+        return writer.toString();
     }
 }
