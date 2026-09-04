@@ -31,6 +31,7 @@ public class DocumentSerializer {
     private Logger logger = LogManager.getLogger(this.getClass());
     private String[] cDataElements = null;
     private boolean omitXmlDeclaration = false;
+    private boolean indent = true;
 
     public DocumentSerializer() {
         this(null, false);
@@ -47,6 +48,11 @@ public class DocumentSerializer {
     public DocumentSerializer(String[] cDataElements, boolean omitXmlDeclaration) {
         this.cDataElements = cDataElements;
         this.omitXmlDeclaration = omitXmlDeclaration;
+    }
+
+    /** Output is indented unless this is turned off. */
+    public void setIndent(boolean indent) {
+        this.indent = indent;
     }
 
     public void toXML(Document source, Writer writer) {
@@ -70,7 +76,7 @@ public class DocumentSerializer {
                 transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "no");
             }
 
-            transformer.setOutputProperty(OutputKeys.INDENT, "yes");
+            transformer.setOutputProperty(OutputKeys.INDENT, indent ? "yes" : "no");
             transformer.setOutputProperty(OutputKeys.METHOD, "xml");
 
             if (source.getDoctype() != null) {

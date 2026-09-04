@@ -22,6 +22,7 @@ import org.apache.commons.io.FileUtils;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.w3c.dom.Document;
+import org.w3c.dom.Element;
 import org.xml.sax.InputSource;
 
 public class DocumentSerializerTest {
@@ -54,6 +55,23 @@ public class DocumentSerializerTest {
 		assertNull(doc);
 	}
 	
+	@Test
+	public void testIndent() throws Exception {
+		Document document = DocumentSerializer.getSecureDocumentBuilderFactory().newDocumentBuilder().newDocument();
+		Element root = document.createElement("root");
+		root.appendChild(document.createElement("child"));
+		document.appendChild(root);
+
+		// Callers that render XML for people rely on the default staying on. The serializer breaks
+		// lines with the platform separator, so compare against one.
+		String indented = new DocumentSerializer().toXML(document).replace("\r\n", "\n");
+		assertTrue(indented.contains("<root>\n    <child/>\n</root>"));
+
+		DocumentSerializer unindented = new DocumentSerializer();
+		unindented.setIndent(false);
+		assertTrue(unindented.toXML(document).contains("<root><child/></root>"));
+	}
+
 	@Test
 	public void testToXMLWithExternalDTD() throws Exception {
 		String xml = FileUtils.readFileToString(new File("tests/test-xxe-example.xml"), "UTF-8");
