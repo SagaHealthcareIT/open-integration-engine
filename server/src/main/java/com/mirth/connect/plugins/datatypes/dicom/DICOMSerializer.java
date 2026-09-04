@@ -14,9 +14,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
 import java.util.Map;
-import java.util.Set;
 
 import javax.xml.XMLConstants;
 import javax.xml.parsers.SAXParser;
@@ -55,7 +53,8 @@ import com.mirth.connect.model.util.DefaultMetaData;
 import com.mirth.connect.util.ErrorMessageBuilder;
 
 public class DICOMSerializer implements IMessageSerializer {
-    private DocumentSerializer documentSerializer = new DocumentSerializer();
+    private final DocumentSerializer documentSerializer = new DocumentSerializer();
+    private final DocumentSerializer parserSerializer = createParserSerializer();
 
     public DICOMSerializer() {
 
@@ -107,7 +106,6 @@ public class DICOMSerializer implements IMessageSerializer {
             }
 
             NodeList items = document.getElementsByTagName("item");
-            Set<Element> sequenceElements = new LinkedHashSet<>();
 
             // change back to <attr> tag for all tags under <item> tags
             if (items != null) {
@@ -122,33 +120,27 @@ public class DICOMSerializer implements IMessageSerializer {
                             renameTagToAttr(document, nodeItem);
                         }
                     }
-
-                    // An <item> holding elements is a dataset item, so its container is a sequence.
-                    Node parentNode = itemNode.getParentNode();
-
-                    if (parentNode instanceof Element && hasElementChild(itemNode)) {
-                        sequenceElements.add((Element) parentNode);
-                    }
                 }
             }
 
             /*
-             * dcm4che2's XML round trip is asymmetric for sequences read from implicit-VR private
-             * tags: SAXWriter emits the wire VR (vr="UN" len="-1") with structured <item> children,
-             * but ContentHandlerAdapter only enters its sequence state for vr="SQ" and otherwise
-             * expects fragments, throwing IllegalStateException("state:EXPECT_FRAG") when a dataset
-             * item arrives. DicomInputStream already promotes such elements to SQ in memory, so
-             * present them to the parser the same way. Fragment containers (encapsulated pixel data,
-             * whose items hold only base64/hex text) never qualify. A container mixing text items
-             * and dataset items is left alone as well: promoting it would make the parser silently
-             * discard the text items, so it keeps failing loudly instead.
+             * dcm4che2 cannot round-trip a sequence whose VR was not in its dictionary. Under
+             * implicit VR such an element is read as UN, and DicomInputStream promotes it to a
+             * sequence in memory, but the streaming SAXWriter has already written the wire VR, so
+             * toXML emits vr="UN" around structured <item> children. ContentHandlerAdapter enters
+             * its sequence state only for vr="SQ" and otherwise expects fragments, so it throws
+             * IllegalStateException("state:EXPECT_FRAG") at the first element inside the item.
              *
-             * The rewrite runs after the item loop because setAttribute invalidates the live
-             * NodeList being iterated (the DOM re-walks the document on the next access).
+             * Present those elements the way DicomInputStream already reads them.
              */
-            for (Element sequenceElement : sequenceElements) {
-                if (!sequenceElement.getAttribute("vr").equals("SQ") && !hasTextItem(sequenceElement)) {
-                    sequenceElement.setAttribute("vr", "SQ");
+            NodeList attrElements = document.getElementsByTagName("attr");
+
+            for (int i = 0; i < attrElements.getLength(); i++) {
+                Element attrElement = (Element) attrElements.item(i);
+                removeWhitespaceBetweenItems(attrElement);
+
+                if (attrElement.getAttribute("vr").equals("UN") && hasDatasetItem(attrElement)) {
+                    attrElement.setAttribute("vr", "SQ");
                 }
             }
 
@@ -168,7 +160,7 @@ public class DICOMSerializer implements IMessageSerializer {
             SAXParser parser = factory.newSAXParser();
             DicomObject dicomObject = new BasicDicomObject();
             ContentHandlerAdapter contentHandler = new ContentHandlerAdapter(dicomObject);
-            byte[] documentBytes = documentSerializer.toXML(document).trim().getBytes(charset);
+            byte[] documentBytes = parserSerializer.toXML(document).trim().getBytes(charset);
             parser.parse(new InputSource(new ByteArrayInputStream(documentBytes)), contentHandler);
             return StringUtils.newStringUsAscii(Base64Util.encodeBase64(DICOMConverter.dicomObjectToByteArray(dicomObject)));
         } catch (Exception e) {
@@ -239,38 +231,6 @@ public class DICOMSerializer implements IMessageSerializer {
         }
     }
 
-    private boolean hasElementChild(Node node) {
-        for (Node child = node.getFirstChild(); child != null; child = child.getNextSibling()) {
-            if (child.getNodeType() == Node.ELEMENT_NODE) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * True when any direct <item> child of the element carries non-whitespace text, i.e. an
-     * encoded fragment rather than a dataset.
-     */
-    private boolean hasTextItem(Element element) {
-        for (Node item = element.getFirstChild(); item != null; item = item.getNextSibling()) {
-            if (item.getNodeType() != Node.ELEMENT_NODE || !item.getNodeName().equals("item")) {
-                continue;
-            }
-
-            for (Node child = item.getFirstChild(); child != null; child = child.getNextSibling()) {
-                short type = child.getNodeType();
-
-                if ((type == Node.TEXT_NODE || type == Node.CDATA_SECTION_NODE) && !child.getNodeValue().trim().isEmpty()) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
     private void renameTagToAttr(Document document, Node node) throws DOMException {
         NamedNodeMap attr = node.getAttributes();
 
@@ -285,6 +245,78 @@ public class DICOMSerializer implements IMessageSerializer {
                 }
             }
         }
+    }
+
+    /**
+     * Serializes fromXML's document for the SAX parser, which is its only reader. Unindented
+     * because ContentHandlerAdapter reads the indentation between an element and its items as part
+     * of the element's value, putting back what removeWhitespaceBetweenItems took out.
+     */
+    private static DocumentSerializer createParserSerializer() {
+        DocumentSerializer serializer = new DocumentSerializer();
+        serializer.setIndent(false);
+        return serializer;
+    }
+
+    /**
+     * Drops the whitespace-only text nodes among an element's items. fromXML's input arrives
+     * indented, and writing the document back out unindented does not remove text nodes already in
+     * it, so they have to come out of the document itself.
+     *
+     * ContentHandlerAdapter reads that text as part of the element's value. onEndItem resets its
+     * byte buffer but onStartItem does not, so only the text before the first item survives, and
+     * under a UN fragment container - whose values are read as literal bytes - it is prepended to
+     * fragment zero. OB and OW parse theirs as numeric tokens instead, and are unaffected.
+     *
+     * Only elements that have items are touched. A UN element with no items and an all-space value
+     * is indistinguishable by its text alone, which is why the test is for items; there the
+     * whitespace is the value.
+     */
+    private void removeWhitespaceBetweenItems(Element element) {
+        boolean hasItems = false;
+
+        for (Node node = element.getFirstChild(); node != null; node = node.getNextSibling()) {
+            if (node.getNodeType() == Node.ELEMENT_NODE && node.getNodeName().equals("item")) {
+                hasItems = true;
+                break;
+            }
+        }
+
+        if (!hasItems) {
+            return;
+        }
+
+        Node child = element.getFirstChild();
+
+        while (child != null) {
+            Node next = child.getNextSibling();
+
+            if (child.getNodeType() == Node.TEXT_NODE && child.getNodeValue().trim().isEmpty()) {
+                element.removeChild(child);
+            }
+
+            child = next;
+        }
+    }
+
+    /**
+     * Whether any item under this element contains elements. A fragment cannot: the parser rejects
+     * elements in fragment state. So the container is a sequence.
+     */
+    private boolean hasDatasetItem(Element element) {
+        for (Node item = element.getFirstChild(); item != null; item = item.getNextSibling()) {
+            if (item.getNodeType() != Node.ELEMENT_NODE || !item.getNodeName().equals("item")) {
+                continue;
+            }
+
+            for (Node child = item.getFirstChild(); child != null; child = child.getNextSibling()) {
+                if (child.getNodeType() == Node.ELEMENT_NODE) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     @Override
