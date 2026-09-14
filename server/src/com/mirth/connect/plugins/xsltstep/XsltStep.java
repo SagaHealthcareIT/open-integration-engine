@@ -11,8 +11,15 @@ package com.mirth.connect.plugins.xsltstep;
 
 import java.util.LinkedList;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
+import javax.xml.XMLConstants;
+import javax.xml.transform.TransformerFactory;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import com.mirth.connect.donkey.util.purge.PurgeUtil;
 import com.mirth.connect.model.FilterTransformerIterable;
@@ -26,6 +33,9 @@ import com.thoughtworks.xstream.annotations.XStreamAlias;
 public class XsltStep extends Step implements FilterTransformerIterable<Step> {
 
     public static final String PLUGIN_POINT = "XSLT Step";
+
+    private static final Logger logger = LogManager.getLogger(XsltStep.class);
+    private static final Set<String> factoriesWithoutDtdRestriction = ConcurrentHashMap.newKeySet();
 
     private String sourceXml;
     private String resultVariable;
@@ -65,6 +75,8 @@ public class XsltStep extends Step implements FilterTransformerIterable<Step> {
         } else {
             script.append("tFactory = Packages.javax.xml.transform.TransformerFactory.newInstance();\n");
         }
+        // Must run before the factory is used; see hardenTransformerFactory (CVE-2026-78224).
+        script.append("Packages." + XsltStep.class.getName() + ".hardenTransformerFactory(tFactory);\n");
 
         script.append("xsltTemplate = new Packages.java.io.StringReader(" + template + ");\n");
         script.append("transformer = tFactory.newTransformer(new Packages.javax.xml.transform.stream.StreamSource(xsltTemplate));\n");
@@ -73,6 +85,32 @@ public class XsltStep extends Step implements FilterTransformerIterable<Step> {
         script.append("transformer.transform(new Packages.javax.xml.transform.stream.StreamSource(sourceVar), new Packages.javax.xml.transform.stream.StreamResult(resultVar));\n");
 
         return script.toString();
+    }
+
+    /**
+     * Restricts external DTD / entity resolution on the factory the generated script just created.
+     * The source XML is message content, so <!DOCTYPE d [<!ENTITY x SYSTEM "file:///...">]> must
+     * not read server files or stall the channel (CVE-2026-78224). ACCESS_EXTERNAL_DTD is a JAXP
+     * 1.5 attribute; the JDK factory and Saxon 10+ accept it, but the factory is resolved through
+     * the channel's resource class loader, so an older implementation attached as a channel
+     * resource (or named as the custom factory) may reject it. Existing channels must keep working
+     * across the upgrade, so that case is logged once per factory class instead of failing every
+     * message.
+     * <p>
+     * ACCESS_EXTERNAL_STYLESHEET is deliberately not restricted: the stylesheet is channel-author
+     * content (the same trust level as a JavaScript step), and restricting it would break
+     * document(), xsl:import and xsl:include in existing channels without closing anything the
+     * source-side restriction does not already close.
+     */
+    public static void hardenTransformerFactory(TransformerFactory factory) {
+        try {
+            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+        } catch (IllegalArgumentException e) {
+            String factoryClass = factory.getClass().getName();
+            if (factoriesWithoutDtdRestriction.add(factoryClass)) {
+                logger.warn("XSLT step: TransformerFactory " + factoryClass + " does not support " + XMLConstants.ACCESS_EXTERNAL_DTD + "; external entities in the source XML of XSLT steps using it are NOT restricted (CVE-2026-78224). Upgrade the XSLT implementation.", e);
+            }
+        }
     }
 
     @Override

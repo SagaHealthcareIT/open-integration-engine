@@ -167,6 +167,9 @@ public class DatabaseDriversDialog extends MirthDialog {
                 if (StringUtils.isBlank(driver.getTemplate())) {
                     errors += "Row " + (i + 1) + ": JDBC URL Template cannot be blank.\n";
                 }
+                if (!DriverInfo.isValidSelectLimit(driver.getSelectLimit())) {
+                    errors += "Row " + (i + 1) + ": Select Limit must be empty or a row-limiting query of the form SELECT * FROM ? (for example SELECT * FROM ? LIMIT 1, SELECT TOP 1 * FROM ?, SELECT * FROM ? WHERE ROWNUM < 2).\n";
+                }
             }
         }
 

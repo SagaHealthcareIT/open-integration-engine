@@ -59,7 +59,7 @@ public interface DatabaseConnectorServletInterface extends BaseServletInterface 
             @Param("username") @Parameter(description = "The username to authenticate with.") @DefaultValue("") @QueryParam("username") String username,
             @Param(value = "password", excludeFromAudit = true) @Parameter(description = "The password to authenticate with.", schema = @Schema(format = "password")) @DefaultValue("") @QueryParam("password") String password,
             @Param("tableNamePatterns") @Parameter(description = "If specified, filters by table name. Wildcards (* or %) are allowed.") @QueryParam("tableNamePattern") Set<String> tableNamePatterns,
-            @Param("selectLimit") @Parameter(description = "A simple query to use to retrieve database metadata information.", schema = @Schema(defaultValue = "SELECT * FROM ? LIMIT 1")) @DefaultValue("SELECT * FROM ? LIMIT 1") @QueryParam("selectLimit") String selectLimit,
+            @Param("selectLimit") @Parameter(description = "Ignored. The select limit query configured for the driver on the server (or generic column metadata retrieval when there is none) is always used; this parameter is retained for client compatibility.") @QueryParam("selectLimit") String selectLimit,
             @Param("resourceIds") @Parameter(description = "Library resource IDs to use, if a custom driver is necessary.") @QueryParam("resourceId") Set<String> resourceIds) throws ClientException;
     // @formatter:on)
 }

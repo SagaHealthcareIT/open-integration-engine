@@ -17,6 +17,8 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockingDetails;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
@@ -64,6 +66,58 @@ public class DefaultConfigurationControllerTest {
             }
         });
         injector.getInstance(ControllerFactory.class);
+    }
+
+    @Test
+    public void setDatabaseDrivers_ValidSelectLimitsAreSaved() throws Exception {
+        DefaultConfigurationController configurationController = spy(new DefaultConfigurationController());
+        doNothing().when(configurationController).saveProperty(any(), any(), any());
+
+        configurationController.setDatabaseDrivers(DriverInfo.getDefaultDrivers());
+
+        verify(configurationController).saveProperty(any(), any(), any());
+    }
+
+    @Test
+    public void setDatabaseDrivers_RejectsNonAllowlistedSelectLimit() throws Exception {
+        DefaultConfigurationController configurationController = spy(new DefaultConfigurationController());
+        doNothing().when(configurationController).saveProperty(any(), any(), any());
+        List<DriverInfo> drivers = new ArrayList<DriverInfo>(DriverInfo.getDefaultDrivers());
+        drivers.add(new DriverInfo("Evil", "org.apache.derby.jdbc.EmbeddedDriver", "jdbc:derby:x", "CALL SYSCS_UTIL.SYSCS_EXPORT_QUERY('SELECT * FROM ?', '/tmp/x', null, null, null)"));
+
+        try {
+            configurationController.setDatabaseDrivers(drivers);
+            fail("Expected ControllerException");
+        } catch (ControllerException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("Evil"));
+        }
+        verify(configurationController, never()).saveProperty(any(), any(), any());
+    }
+
+    @Test
+    public void setDatabaseDrivers_RejectsNullEntryAndBlankClassName() throws Exception {
+        DefaultConfigurationController configurationController = spy(new DefaultConfigurationController());
+        doNothing().when(configurationController).saveProperty(any(), any(), any());
+
+        List<DriverInfo> withNull = new ArrayList<DriverInfo>(DriverInfo.getDefaultDrivers());
+        withNull.add(null);
+        try {
+            configurationController.setDatabaseDrivers(withNull);
+            fail("Expected ControllerException");
+        } catch (ControllerException e) {
+            // expected
+        }
+
+        List<DriverInfo> blankClass = new ArrayList<DriverInfo>(DriverInfo.getDefaultDrivers());
+        blankClass.add(new DriverInfo("NoClass", " ", "jdbc:x", ""));
+        try {
+            configurationController.setDatabaseDrivers(blankClass);
+            fail("Expected ControllerException");
+        } catch (ControllerException e) {
+            // expected
+        }
+
+        verify(configurationController, never()).saveProperty(any(), any(), any());
     }
 
     @Test
