@@ -13,6 +13,7 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import org.apache.commons.lang3.builder.EqualsBuilder;
 
@@ -112,5 +113,30 @@ public class DriverInfo implements Serializable {
     @Override
     public boolean equals(Object obj) {
         return EqualsBuilder.reflectionEquals(this, obj);
+    }
+
+    /*
+     * The select limit query is executed verbatim by the Database Connector metadata service with
+     * the table name substituted for '?', and only the result's column metadata is returned. It is
+     * therefore restricted to an allowlist of "read one row of the table" shapes: a free-form
+     * SELECT would still allow vendor-specific side effects (SELECT ... INTO OUTFILE, lo_export(),
+     * pg_sleep(), T-SQL batches without a separator) and a boolean oracle over any reachable
+     * table via succeed-or-fall-back. Covers the shipped drivers (LIMIT n, WHERE ROWNUM < n,
+     * TOP n) plus the common FIRST n / FETCH FIRST n ROWS ONLY / WHERE 1 = 0 variants.
+     */
+    private static final Pattern SELECT_LIMIT_PATTERN = Pattern.compile("^SELECT\\s+(?:(?:TOP|FIRST)\\s+\\d{1,6}\\s+)?\\*\\s+FROM\\s+\\?(?:\\s+(?:LIMIT\\s+\\d{1,6}|WHERE\\s+ROWNUM\\s*<=?\\s*\\d{1,6}|FETCH\\s+FIRST\\s+\\d{1,6}\\s+ROWS?\\s+ONLY|WHERE\\s+1\\s*=\\s*0))?$", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Returns whether a driver's select limit query is safe to execute for column metadata
+     * retrieval. An empty or null query is valid and means "use the generic DatabaseMetaData
+     * path". Anything else must be exactly one of the allowlisted "SELECT * FROM ?" row-limiting
+     * shapes; any other statement is rejected (CVE-2026-82583).
+     */
+    public static boolean isValidSelectLimit(String selectLimit) {
+        if (selectLimit == null) {
+            return true;
+        }
+        String query = selectLimit.trim();
+        return query.isEmpty() || SELECT_LIMIT_PATTERN.matcher(query).matches();
     }
 }

@@ -750,6 +750,18 @@ public class DefaultConfigurationController extends ConfigurationController {
 
     @Override
     public void setDatabaseDrivers(List<DriverInfo> drivers) throws ControllerException {
+        if (drivers != null) {
+            for (DriverInfo driver : drivers) {
+                if (driver == null || StringUtils.isBlank(driver.getClassName())) {
+                    throw new ControllerException("Every database driver entry must have a driver class name.");
+                }
+                // The select limit is executed by the Database Connector metadata service, so it must
+                // be one of the allowlisted "SELECT * FROM ?" row-limiting shapes (CVE-2026-82583).
+                if (!DriverInfo.isValidSelectLimit(driver.getSelectLimit())) {
+                    throw new ControllerException("The select limit query for database driver '" + driver.getName() + "' must be empty or a row-limiting query of the form SELECT * FROM ? (for example SELECT * FROM ? LIMIT 1, SELECT TOP 1 * FROM ?, SELECT * FROM ? WHERE ROWNUM < 2).");
+                }
+            }
+        }
         saveProperty(PROPERTIES_CORE, PROPERTIES_DATABASE_DRIVERS, ObjectXMLSerializer.getInstance().serialize(drivers));
     }
 

@@ -32,8 +32,11 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.mirth.connect.client.core.ControllerException;
 import com.mirth.connect.client.core.api.MirthApiException;
+import com.mirth.connect.model.DriverInfo;
 import com.mirth.connect.server.api.MirthServlet;
+import com.mirth.connect.server.controllers.ConfigurationController;
 import com.mirth.connect.server.controllers.ContextFactoryController;
 import com.mirth.connect.server.controllers.ControllerFactory;
 import com.mirth.connect.server.util.TemplateValueReplacer;
@@ -45,6 +48,7 @@ public class DatabaseConnectorServlet extends MirthServlet implements DatabaseCo
     private static final Logger logger = LogManager.getLogger(DatabaseConnectorServlet.class);
     private static final TemplateValueReplacer replacer = new TemplateValueReplacer();
     private static final ContextFactoryController contextFactoryController = ControllerFactory.getFactory().createContextFactoryController();
+    private static final ConfigurationController configurationController = ControllerFactory.getFactory().createConfigurationController();
 
     public DatabaseConnectorServlet(@Context HttpServletRequest request, @Context SecurityContext sc) {
         super(request, sc, PLUGIN_POINT);
@@ -58,6 +62,13 @@ public class DatabaseConnectorServlet extends MirthServlet implements DatabaseCo
             url = replacer.replaceValues(url, channelId, channelName);
             username = replacer.replaceValues(username, channelId, channelName);
             password = replacer.replaceValues(password, channelId, channelName);
+
+            /*
+             * The select limit query is executed verbatim against every matched table below, so it
+             * must never come from the request. Only the value configured for the driver on this
+             * server is used, and only if it is an allowlisted row-limiting shape (CVE-2026-82583).
+             */
+            selectLimit = resolveSelectLimit(driver, selectLimit);
 
             String schema = null;
 
@@ -164,7 +175,7 @@ public class DatabaseConnectorServlet extends MirthServlet implements DatabaseCo
 
                         // replace the '?' with the appropriate schema.table name, and use ResultSetMetaData to 
                         // retrieve column information 
-                        final String schemaTableName = StringUtils.isNotEmpty(schema) ? "\"" + schema + "\".\"" + tableName + "\"" : "\"" + tableName + "\"";
+                        final String schemaTableName = StringUtils.isNotEmpty(schema) ? quoteIdentifier(schema) + "." + quoteIdentifier(tableName) : quoteIdentifier(tableName);
                         final String queryString = selectLimit.trim().replaceAll("\\?", Matcher.quoteReplacement(schemaTableName));
                         Statement statement = connection.createStatement();
                         try {
@@ -227,6 +238,71 @@ public class DatabaseConnectorServlet extends MirthServlet implements DatabaseCo
                 }
             }
         }
+    }
+
+    /**
+     * Resolves the "select limit" query used to read column metadata for each table.
+     * <p>
+     * The query is only ever taken from the driver list configured on this server
+     * (conf/dbdrivers.xml, or the Database Drivers settings table), matched by the requested driver
+     * class name or one of its alternative class names. The caller-supplied value is never
+     * executed: it is ignored, and a mismatch against the configured query is logged. The
+     * configured query is itself required to pass {@link DriverInfo#isValidSelectLimit} so that an
+     * edited driver list cannot be used to smuggle an arbitrary statement in. When the driver is
+     * unknown, has no select limit configured, or has an invalid one, an empty string is returned
+     * so that {@link #getTables} falls back to {@link DatabaseMetaData#getColumns}.
+     * 
+     * @param driver
+     *            the requested JDBC driver class name
+     * @param requestedSelectLimit
+     *            the select limit query supplied by the caller, may be null; never executed
+     * @return the trusted select limit query, or an empty string if there is none
+     */
+    String resolveSelectLimit(String driver, String requestedSelectLimit) {
+        String requested = StringUtils.trimToEmpty(requestedSelectLimit);
+        String configured = getConfiguredSelectLimit(driver);
+
+        if (StringUtils.isNotEmpty(requested) && !requested.equals(configured)) {
+            logger.warn("Ignoring the caller-supplied select limit query for driver '" + driver + "'; only the query configured for that driver on this server is used.");
+        }
+
+        return configured;
+    }
+
+    private static String quoteIdentifier(String identifier) {
+        return "\"" + identifier.replace("\"", "\"\"") + "\"";
+    }
+
+    private String getConfiguredSelectLimit(String driver) {
+        if (StringUtils.isBlank(driver)) {
+            return "";
+        }
+
+        List<DriverInfo> drivers;
+        try {
+            drivers = configurationController.getDatabaseDrivers();
+        } catch (ControllerException e) {
+            logger.warn("Unable to load the configured database drivers, using generic column metadata retrieval.", e);
+            return "";
+        }
+
+        if (drivers != null) {
+            for (DriverInfo driverInfo : drivers) {
+                if (driverInfo == null) {
+                    continue;
+                }
+                if (driver.equals(driverInfo.getClassName()) || (driverInfo.getAlternativeClassNames() != null && driverInfo.getAlternativeClassNames().contains(driver))) {
+                    String configured = StringUtils.trimToEmpty(driverInfo.getSelectLimit());
+                    if (!DriverInfo.isValidSelectLimit(configured)) {
+                        logger.warn("The select limit query configured for driver '" + driver + "' is not an allowed 'SELECT * FROM ?' row-limiting shape; using generic column metadata retrieval instead.");
+                        return "";
+                    }
+                    return configured;
+                }
+            }
+        }
+
+        return "";
     }
 
     /**
