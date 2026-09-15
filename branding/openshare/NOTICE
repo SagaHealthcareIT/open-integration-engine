@@ -1,0 +1,15 @@
+OpenShare branding assets
+
+"OpenShare" and the logos, marks, and icons in this directory (and the copies
+compiled into the Administrator client under
+client/src/com/mirth/connect/client/ui/images/branding/ and the API
+documentation under server/public_api_html/images/) are trademarks and
+copyrighted works of Saga IT, LLC. All rights reserved.
+
+They are NOT licensed under the Mozilla Public License 2.0 that covers the
+engine source in this repository. They are included only so that the
+openshare branch builds exactly as Saga IT ships it. MPL 2.0 section 2.3 grants
+no rights in any contributor's trademarks, service marks, or logos.
+
+If you redistribute a modified build of this software, replace the OpenShare
+name and these assets with your own branding.
