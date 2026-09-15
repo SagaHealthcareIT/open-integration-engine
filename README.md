@@ -6,6 +6,19 @@
 [![LinkedIn](https://img.shields.io/badge/linkedin-follow-blue?logo=linkedin&style=flat)](https://www.linkedin.com/company/open-integration-engine)
 
 ---
+## OpenShare Engine (this branch)
+
+The `openshare` branch is **OpenShare Engine**, [Saga IT](https://saga-it.com)'s build of the Open Integration Engine: upstream OIE plus OpenShare branding, signed Windows and Linux installers, a Java 21 runtime, and fixes that have not yet landed upstream. It is the source for every OpenShare Engine binary we distribute, and it is published here under the same [MPL 2.0](LICENSE.txt) as upstream so that anyone receiving those binaries can obtain and modify the corresponding source.
+
+- **Releases:** each build is tagged `openshare-v<upstream version>-<n>` (for example `openshare-v4.6.0-7`). The tag names the exact commit a set of installers and container images was built from; the media's provenance file records the same commit.
+- **Binaries:** installers come from the engine download in the [OpenShare console](https://openshare.health); container images are on Docker Hub as [`sagait/openshare-engine`](https://hub.docker.com/r/sagait/openshare-engine).
+- **Upstream:** [OpenIntegrationEngine/engine](https://github.com/OpenIntegrationEngine/engine). This branch is based on an upstream release tag (currently `v4.6.0`) rather than upstream `main`; fixes we make are offered upstream where they apply.
+- **Building:** this branch still uses the Ant build (`server/mirth-build.xml`). It needs a JDK of at least 19 that bundles JavaFX (the Derby 10.17 tools jar is compiled for Java 19; the Administrator client compiles against JavaFX). `cd server && ant compile test-run` runs the server test suite.
+- **Security:** OpenShare Engine 4.6.0-7 fixes CVE-2026-82583, CVE-2026-78224 and CVE-2026-82578 (CISA advisory ICSMA-26-253-01) and ports the upstream metadata-search fix (OIE #361). Report security issues to security@saga-it.com.
+
+The rest of this README is upstream's and describes the Open Integration Engine project itself.
+
+---
 ## Table of Contents
 
 - [Mission Statement](#mission-statement)
