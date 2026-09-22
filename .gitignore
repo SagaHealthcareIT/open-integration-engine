@@ -650,3 +650,6 @@ donkey/donkey-test
 # /server/src/org/mozilla/javascript/
 
 # /server/src/org/mozilla/javascript/xmlimpl/
+
+# compiled output of the manual (non-CI) checks
+client/manual-checks/**/out/
