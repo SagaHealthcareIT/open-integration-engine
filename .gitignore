@@ -661,3 +661,6 @@ donkey/donkey-test
 server/setup.tar.gz
 dependency-check-report.html
 dependency-check-report.json
+
+# compiled output of the manual (non-CI) checks
+client/manual-checks/**/out/
