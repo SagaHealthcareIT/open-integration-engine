@@ -39,7 +39,8 @@
 #   SKIP_ENGINE_BUILD=1 reuse an existing server/setup (skip the Ant build)
 #   PUBLISH_RELEASE=1   after signing, attach media + .sha256 + provenance to a
 #                       GitHub release (tag openshare-v<engine-version>) that the
-#                       publish-engine-to-s3{,-prod}.yml workflows pull from
+#                       publish-engine-to-s3{,-prod}.yml and
+#                       publish-engine-to-github-public.yml workflows pull from
 #   ENGINE_REPO         release repo (default: SagaHealthcareIT/open-integration-engine-internal)
 #   RELEASE_TAG         override the release tag (default: openshare-v<engine-version>)
 #   RELEASE_NOTES       path to a release-notes markdown file (default: a one-line stub)
@@ -89,6 +90,15 @@ UPSTREAM_TAG="$(git -C "$REPO_ROOT" describe --tags --abbrev=0 --match 'v[0-9]*'
        fetch upstream tags (git fetch upstream --tags) and make sure openshare is based on a release tag"
 UPSTREAM_COMMIT="$(git -C "$REPO_ROOT" rev-list -n1 "$UPSTREAM_TAG")"
 OPENSHARE_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+
+# A published release records OPENSHARE_COMMIT as the source it was built
+# from, and the public GitHub publisher checks the public tag against it. That
+# only holds if the tracked tree has no uncommitted changes. (Build output is
+# gitignored; untracked files don't reach the Ant build.) Dev builds may be dirty.
+if [ "$PUBLISH_RELEASE" = 1 ] && [ -n "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=no)" ]; then
+  die "uncommitted changes to tracked files — a published release must be built from a clean commit:
+$(git -C "$REPO_ROOT" status --short --untracked-files=no)"
+fi
 RELEASE_VERSION="${RELEASE_VERSION:-${UPSTREAM_TAG#v}}"
 
 # The in-repo install4j version must be the plain X.Y.Z prefix of what we ship
@@ -231,13 +241,20 @@ if [ "$PUBLISH_RELEASE" = 1 ]; then
     # desired. Notes come from RELEASE_NOTES (file path) or a stub.
     NOTES_ARG=( --notes "OpenShare Engine ${RELEASE_VERSION} — Open Integration Engine ${UPSTREAM_TAG} (${UPSTREAM_COMMIT:0:9}) with OpenShare branding. EV-signed installers; admin-console plugin delivered as a download-time sidecar." )
     [ -n "${RELEASE_NOTES:-}" ] && [ -f "${RELEASE_NOTES}" ] && NOTES_ARG=( --notes-file "$RELEASE_NOTES" )
+    # --target: if the tag doesn't exist yet, create it at the commit these
+    # media were built from, not at the tip of the default branch. (That
+    # commit must already be pushed to origin.)
     gh release create "$TAG" --repo "$ENGINE_REPO" \
+      --target "$OPENSHARE_COMMIT" \
       --title "OpenShare Engine ${RELEASE_VERSION}" \
       --latest=false "${NOTES_ARG[@]}" \
       "${UPLOADS[@]}"
   fi
   echo "==> Release $TAG published. Next: dispatch publish-engine-to-s3.yml (dev)"
   echo "    then, after dev validation, publish-engine-to-s3-prod.yml (prod) with tag=$TAG"
+  echo "    and publish-engine-to-github-public.yml (public download, no plugin). Make the"
+  echo "    source public first (the release may have created the tag on origin only):"
+  echo "      git fetch origin tag $TAG && git push saga-public refs/tags/$TAG"
 fi
 
 echo
