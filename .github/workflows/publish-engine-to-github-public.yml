@@ -1,0 +1,245 @@
+name: Publish Engine to GitHub (public)
+
+# PUBLIC publisher for the branded OpenShare Engine installers — a third
+# destination beside publish-engine-to-s3.yml (dev) and
+# publish-engine-to-s3-prod.yml (prod).
+#
+# The S3 buckets are private and only reachable through a logged-in console
+# download, which pairs the media with the admin-console plugin. This workflow
+# puts the SAME signed media, without the plugin, on a GitHub release in the
+# public source repo (SagaHealthcareIT/open-integration-engine), so anyone can
+# download the hardened engine without an OpenShare account. The stable
+# "newest release" address is
+# https://github.com/SagaHealthcareIT/open-integration-engine/releases/latest
+#
+# Like the S3 publishers it is download-and-copy only: CI cannot build
+# (install4j is licensed) or sign (the Sectigo eToken is hardware) the engine,
+# so a maintainer must already have attached the EV-signed openshare_* media +
+# .sha256 sidecars to the private release for the tag with
+# tools/release-signed.sh. Uploading from a runner also avoids pushing ~2.5 GB
+# from the signing machine a second time.
+#
+# The media are only published once their source is public: the tag must
+# already exist on the public repo (git push saga-public openshare <tag>) and
+# resolve to the openshare_commit the provenance marker says the media were
+# built from. That keeps binaries and the MPL-covered source in step.
+#
+# Promotion: dispatch after the release is validated on dev — the same point
+# the prod S3 publisher runs. Publishing is public and effectively permanent
+# (downloads cannot be recalled), so treat it with prod-level care.
+#
+# Requires the PUBLIC_ENGINE_RELEASE_TOKEN secret in the production
+# environment: a fine-grained PAT (or App token) scoped to
+# SagaHealthcareIT/open-integration-engine only, with Contents: read and
+# write. The default GITHUB_TOKEN cannot write to another repo. The current
+# PAT was created 2026-09-24 with a 12-month expiry; rotate it before
+# 2027-09-24 or the tag check fails with a 401.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. openshare-v4.6.0-7). The private release must already have the EV-signed openshare_* media + .sha256 sidecars, and the tag must be pushed to the public repo.'
+        required: true
+        type: string
+      latest:
+        description: 'Mark as the public repo''s Latest release (untick when backfilling an older version).'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  PUBLIC_REPO: SagaHealthcareIT/open-integration-engine
+
+# Two dispatches for the same tag would race on the release create.
+concurrency:
+  group: publish-engine-github-public-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Copy signed engine media to the public GitHub release
+    # This file is mirrored to the public repo with the openshare branch; it
+    # must only ever run from the private repo that holds the signed media.
+    if: github.repository == 'SagaHealthcareIT/open-integration-engine-internal'
+    runs-on: ubuntu-latest
+    # Publishing is public and permanent. `production` is the shared
+    # environment for every prod-facing workflow: it holds the
+    # PUBLIC_ENGINE_RELEASE_TOKEN secret and only admits the openshare
+    # branch, so a workflow edited on any other branch can't reach the token.
+    environment: production
+
+    steps:
+      - name: Validate tag input
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if [[ ! "$TAG" =~ ^openshare-v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "Invalid tag: $TAG"
+            echo "Expected openshare-vMAJOR.MINOR.PATCH (optionally -suffix)"
+            exit 1
+          fi
+          echo "version=${TAG#openshare-v}" >> "$GITHUB_ENV"
+
+      - name: Download signed media from the private release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          mkdir -p release
+          gh release download "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern 'openshare_*' \
+            --pattern 'BUNDLED_PLUGIN.txt' \
+            --dir release
+          echo "Downloaded:"; ls -la release/
+
+      - name: Verify checksums and provenance
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_ENGINE_RELEASE_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          cd release
+
+          # Every media file must have a sidecar and match it — the public
+          # release publishes the sidecars too, so they have to be right.
+          shopt -s nullglob
+          media=0
+          for f in openshare_*; do
+            case "$f" in *.sha256) continue;; esac
+            [ -f "${f}.sha256" ] || { echo "Missing checksum sidecar for $f"; exit 1; }
+            sha256sum -c "${f}.sha256"
+            media=$((media+1))
+          done
+          [ "$media" -ge 1 ] || { echo "No installer media on release $TAG"; exit 1; }
+          echo "media_count=$media" >> "$GITHUB_ENV"
+
+          [ -f BUNDLED_PLUGIN.txt ] || { echo "Release $TAG has no BUNDLED_PLUGIN.txt provenance marker"; exit 1; }
+
+          # The public media must not carry the admin-console plugin; only
+          # sidecar-era releases are plugin-free.
+          grep -qE '^plugin_sidecar=true$' BUNDLED_PLUGIN.txt \
+            || { echo "Release $TAG bakes the plugin into its media; it cannot be published publicly"; exit 1; }
+
+          BUILT_FROM=$(grep -E '^openshare_commit=' BUNDLED_PLUGIN.txt | head -1 | cut -d= -f2- || true)
+          [ -n "$BUILT_FROM" ] || { echo "Provenance marker has no openshare_commit"; exit 1; }
+
+          # The source the media were built from must already be public under
+          # the same tag. refs/tags/ so a same-named branch can't answer, and
+          # the peeled commit so annotated and lightweight tags both work.
+          # gh api prints the error body on stdout, so only trust the output
+          # of a successful call; stderr stays visible so an auth failure
+          # isn't mistaken for a missing tag.
+          if ! PUBLIC_SHA=$(gh api "repos/${PUBLIC_REPO}/commits/refs/tags/${TAG}" --jq .sha); then
+            echo "Could not resolve tag $TAG on ${PUBLIC_REPO} (see the error above)."
+            echo "If the tag isn't public yet, push it first:"
+            echo "  git push saga-public refs/tags/$TAG"
+            exit 1
+          fi
+          if [ "$PUBLIC_SHA" != "$BUILT_FROM" ]; then
+            echo "Public tag $TAG -> $PUBLIC_SHA, but the media were built from $BUILT_FROM"
+            exit 1
+          fi
+          echo "Media built from $BUILT_FROM, public at $TAG"
+
+      - name: Compose public release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq '.body // ""' \
+            | tr -d '\r' > notes.md
+          # The private notes are written for the console download, which
+          # pairs the media with the plugin. Say plainly what this download is.
+          cat >> notes.md <<EOF
+
+          ---
+
+          **About these downloads.** These are the EV-signed OpenShare Engine ${version} installers
+          and archives; files named \`-with-JRE\` bundle a Java runtime. They do not include the
+          OpenShare plugin. To connect an engine to OpenShare, create a
+          server at https://console.openshare.health and download the installer there, which
+          pairs the engine with the plugin and registers it to your account on first start.
+
+          Each file has a \`.sha256\` checksum next to it (\`sha256sum -c <file>.sha256\`).
+          Source: the [\`${TAG}\`](https://github.com/${PUBLIC_REPO}/tree/${TAG}) tag of this repository.
+          EOF
+          echo "----- notes.md -----"; cat notes.md
+
+      - name: Create or update the public release
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_ENGINE_RELEASE_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          LATEST: ${{ inputs.latest }}
+        run: |
+          set -euo pipefail
+          # Media + checksum sidecars only. BUNDLED_PLUGIN.txt is internal
+          # provenance for the S3 manifest; its name would mislead here.
+          uploads=(release/openshare_*)
+
+          # The release list includes drafts; the by-tag endpoint doesn't.
+          existing=$(gh api --paginate "repos/${PUBLIC_REPO}/releases" \
+            --jq ".[] | select(.tag_name == \"${TAG}\") | \"\(.id) \(.draft)\"")
+          if [ "$(printf '%s' "$existing" | grep -c .)" -gt 1 ]; then
+            echo "More than one release uses tag $TAG on ${PUBLIC_REPO}; resolve by hand:"; echo "$existing"
+            exit 1
+          fi
+          read -r release_id is_draft <<< "$existing" || true
+
+          if [ "${is_draft:-}" = true ]; then
+            # gh release create uploads into a draft and publishes at the end,
+            # so a cancelled run leaves one behind. It was never public:
+            # delete it and publish from scratch.
+            echo "Deleting the unpublished draft $release_id left by an earlier run"
+            gh api -X DELETE "repos/${PUBLIC_REPO}/releases/${release_id}"
+            release_id=""
+          fi
+
+          if [ -n "${release_id:-}" ]; then
+            # Already published: replace the assets, leave the notes and the
+            # Latest flag as they are.
+            echo "Release $TAG is already published on ${PUBLIC_REPO}; uploading assets with --clobber"
+            gh release upload "$TAG" --repo "$PUBLIC_REPO" --clobber "${uploads[@]}"
+          else
+            # --verify-tag: never let the release create a tag the source
+            # push didn't.
+            gh release create "$TAG" --repo "$PUBLIC_REPO" \
+              --verify-tag \
+              --title "OpenShare Engine ${version}" \
+              --notes-file notes.md \
+              --latest="$LATEST" \
+              "${uploads[@]}"
+          fi
+
+      - name: Verify the public release assets
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_ENGINE_RELEASE_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          # The by-tag endpoint only returns published releases, so this also
+          # proves the release isn't stuck as a draft.
+          gh api "repos/${PUBLIC_REPO}/releases/tags/${TAG}" > published.json
+          [ "$(jq -r .tag_name published.json)" = "$TAG" ] || { echo "Published release is not on $TAG"; exit 1; }
+          jq -r '.assets[] | "\(.name) \(.size)"' published.json | sort > published.txt
+          ( cd release && for f in openshare_*; do echo "$f $(stat -c %s "$f")"; done ) | sort > expected.txt
+          # Every file we uploaded must be there at its exact size.
+          missing=$(comm -23 expected.txt published.txt)
+          if [ -n "$missing" ]; then
+            echo "Missing or wrong-sized on the public release:"; echo "$missing"
+            exit 1
+          fi
+          # A re-run with a different file set leaves the old files behind.
+          extra=$(comm -13 expected.txt published.txt)
+          if [ -n "$extra" ]; then
+            echo "::warning::Files on the public release that this run did not upload (delete them by hand if stale):"
+            echo "$extra"
+          fi
+          echo "All $(wc -l < expected.txt) files published (${media_count} media + sidecars):"
+          cat published.txt
+          echo "https://github.com/${PUBLIC_REPO}/releases/tag/${TAG}"
