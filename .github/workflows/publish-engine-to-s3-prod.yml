@@ -16,12 +16,31 @@ name: Publish Engine to S3 (prod)
 # openshare_* media (+ .sha256 sidecars) to the release for the given tag with
 # tools/release-signed.sh. Prod reuses the SAME signed media as dev; only the
 # target bucket/role differ.
+#
+# A prod publish is a prod change: the run must name an approved
+# change-control ticket that lists the commit the media were built from
+# (openshare_commit in the release's BUNDLED_PLUGIN.txt), and the change gate
+# checks it before any media is downloaded. A rollback (re-dispatching an
+# older tag) is a prod change too and should get its own ticket; the gate
+# does not refuse an old ticket that is still open and authorized, so close
+# tickets once they're deployed.
+#
+# No `environment:` yet: the prod role's OIDC trust pins
+# sub=repo:...:ref:refs/heads/openshare, and a job in an environment presents
+# sub=repo:...:environment:production instead. The job moves to the
+# `production` environment only after that trust accepts both forms
+# (docs/soc2/change-control-design.md, addendum 2026-09-24). The gate's App
+# credentials are org-level, so they work without the environment.
 
 on:
   workflow_dispatch:
     inputs:
       tag:
         description: 'Release tag (e.g. openshare-v4.6.0). The release must already have the EV-signed openshare_* media + their .sha256 sidecars attached.'
+        required: true
+        type: string
+      ticket:
+        description: 'change-control issue number approving this publish. Its artifacts field must list SagaHealthcareIT/open-integration-engine-internal@<openshare_commit from the release''s BUNDLED_PLUGIN.txt> (the private repo, not the public mirror).'
         required: true
         type: string
 
@@ -50,6 +69,57 @@ jobs:
           fi
           echo "version=${TAG#openshare-v}" >> "$GITHUB_ENV"
 
+      - name: Validate ticket input
+        env:
+          TICKET: ${{ inputs.ticket }}
+        run: |
+          [[ "$TICKET" =~ ^[1-9][0-9]*$ ]] || { echo "Invalid ticket: $TICKET (expected a change-control issue number)"; exit 1; }
+
+      # Read only the provenance marker first, so the gate can check the
+      # ticket before the ~2.5 GB of media is downloaded.
+      - name: Read provenance
+        id: provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p provenance
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'BUNDLED_PLUGIN.txt' --dir provenance \
+            || { echo "Release $TAG has no BUNDLED_PLUGIN.txt provenance marker"; exit 1; }
+          marker=provenance/BUNDLED_PLUGIN.txt
+
+          BUILT_FROM=$(grep -E '^openshare_commit=' "$marker" | head -1 | cut -d= -f2- || true)
+          [[ "$BUILT_FROM" =~ ^[0-9a-f]{40}$ ]] || { echo "Provenance marker has no valid openshare_commit"; exit 1; }
+
+          # The release's own tag must be the commit the media were built
+          # from, or the ticket would approve one commit while another ships.
+          TAG_SHA=$(gh api "repos/${GITHUB_REPOSITORY}/commits/refs/tags/${TAG}" --jq .sha)
+          [ "$TAG_SHA" = "$BUILT_FROM" ] \
+            || { echo "Tag $TAG is $TAG_SHA, but the media were built from $BUILT_FROM"; exit 1; }
+          echo "built_from=$BUILT_FROM" >> "$GITHUB_OUTPUT"
+
+      - name: Mint change-gate token
+        id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CHANGE_GATE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CHANGE_GATE_APP_KEY }}
+          owner: SagaHealthcareIT
+          repositories: change-control,open-integration-engine-internal
+
+      # The ticket must list the built commit, not github.sha: the workflow
+      # runs from the tip of openshare, which can be later than the release.
+      - name: Change gate
+        id: gate
+        uses: SagaHealthcareIT/change-control/.github/actions/change-gate@01372ead74224e470659cd0272eea16582c2744f
+        with:
+          token: ${{ steps.app.outputs.token }}
+          ticket: ${{ inputs.ticket }}
+          stage: deploy
+          sha: ${{ steps.provenance.outputs.built_from }}
+
       - name: Download signed media from GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -57,12 +127,14 @@ jobs:
         run: |
           mkdir -p release
           # openshare_* = the install4j media (.exe/.sh/.dmg[/.zip/.tar.gz])
-          # and their .sha256 sidecars; BUNDLED_PLUGIN.txt = provenance marker.
+          # and their .sha256 sidecars.
           gh release download "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --pattern 'openshare_*' \
-            --pattern 'BUNDLED_PLUGIN.txt' \
             --dir release
+          # The manifest reads the provenance marker the gate checked, not a
+          # second copy that could differ if the asset were replaced mid-run.
+          cp provenance/BUNDLED_PLUGIN.txt release/
           echo "Downloaded:"; ls -la release/
           # At least one installer media (not a .sha256) must be present.
           shopt -s nullglob
@@ -209,3 +281,39 @@ jobs:
           aws s3 cp manifest.json "s3://${BUCKET}/engine/latest/manifest.json" \
             --content-type application/json \
             --cache-control "no-cache, max-age=60"
+
+      # The gate token is minted before a ~2.5 GB download and upload and
+      # lasts an hour, so mint a fresh one for the ticket record.
+      - name: Mint ticket-record token
+        id: app_record
+        if: always() && steps.gate.outcome == 'success'
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CHANGE_GATE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CHANGE_GATE_APP_KEY }}
+          owner: SagaHealthcareIT
+          repositories: change-control
+
+      - name: Record the release on the ticket
+        if: success()
+        env:
+          GH_TOKEN: ${{ steps.app_record.outputs.token }}
+          TICKET: ${{ inputs.ticket }}
+          TAG: ${{ inputs.tag }}
+          BUILT_FROM: ${{ steps.provenance.outputs.built_from }}
+        run: |
+          gh issue comment "$TICKET" --repo SagaHealthcareIT/change-control --body \
+            "Published ${TAG} (built from ${BUILT_FROM}) to prod S3 (engine/latest/manifest.json) by @${GITHUB_TRIGGERING_ACTOR}. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          gh issue edit "$TICKET" --repo SagaHealthcareIT/change-control --add-label deployed
+
+      # A run that passed the gate and then failed may have changed prod
+      # partway, so leave a trace on the ticket (without the deployed label).
+      - name: Record the failed attempt on the ticket
+        if: failure() && steps.app_record.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ steps.app_record.outputs.token }}
+          TICKET: ${{ inputs.ticket }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          gh issue comment "$TICKET" --repo SagaHealthcareIT/change-control --body \
+            "Publishing ${TAG} to prod S3 (engine/latest/manifest.json) FAILED after the change gate passed; the destination may be partly updated. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"

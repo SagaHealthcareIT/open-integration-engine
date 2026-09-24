@@ -20,13 +20,15 @@ name: Publish Engine to GitHub (public)
 # from the signing machine a second time.
 #
 # The media are only published once their source is public: the tag must
-# already exist on the public repo (git push saga-public openshare <tag>) and
+# already exist on the public repo (git push saga-public refs/tags/<tag>) and
 # resolve to the openshare_commit the provenance marker says the media were
 # built from. That keeps binaries and the MPL-covered source in step.
 #
 # Promotion: dispatch after the release is validated on dev — the same point
 # the prod S3 publisher runs. Publishing is public and effectively permanent
-# (downloads cannot be recalled), so treat it with prod-level care.
+# (downloads cannot be recalled), so it is a prod change: the run must name an
+# approved change-control ticket that lists the commit the media were built
+# from, and the change gate checks it before any media is downloaded.
 #
 # Requires the PUBLIC_ENGINE_RELEASE_TOKEN secret in the production
 # environment: a fine-grained PAT (or App token) scoped to
@@ -40,6 +42,10 @@ on:
     inputs:
       tag:
         description: 'Release tag (e.g. openshare-v4.6.0-7). The private release must already have the EV-signed openshare_* media + .sha256 sidecars, and the tag must be pushed to the public repo.'
+        required: true
+        type: string
+      ticket:
+        description: 'change-control issue number approving this release. Its artifacts field must list SagaHealthcareIT/open-integration-engine-internal@<openshare_commit from the release''s BUNDLED_PLUGIN.txt> (the private repo, not the public mirror).'
         required: true
         type: string
       latest:
@@ -84,6 +90,62 @@ jobs:
           fi
           echo "version=${TAG#openshare-v}" >> "$GITHUB_ENV"
 
+      - name: Validate ticket input
+        env:
+          TICKET: ${{ inputs.ticket }}
+        run: |
+          [[ "$TICKET" =~ ^[1-9][0-9]*$ ]] || { echo "Invalid ticket: $TICKET (expected a change-control issue number)"; exit 1; }
+
+      # Read only the provenance marker first, so the gate can check the
+      # ticket before the ~2.5 GB of media is downloaded.
+      - name: Read provenance
+        id: provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p provenance
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'BUNDLED_PLUGIN.txt' --dir provenance \
+            || { echo "Release $TAG has no BUNDLED_PLUGIN.txt provenance marker"; exit 1; }
+          marker=provenance/BUNDLED_PLUGIN.txt
+
+          # The public media must not carry the admin-console plugin; only
+          # sidecar-era releases are plugin-free.
+          grep -qE '^plugin_sidecar=true$' "$marker" \
+            || { echo "Release $TAG bakes the plugin into its media; it cannot be published publicly"; exit 1; }
+
+          BUILT_FROM=$(grep -E '^openshare_commit=' "$marker" | head -1 | cut -d= -f2- || true)
+          [[ "$BUILT_FROM" =~ ^[0-9a-f]{40}$ ]] || { echo "Provenance marker has no valid openshare_commit"; exit 1; }
+
+          # The release's own tag must be the commit the media were built
+          # from, or the ticket would approve one commit while another ships.
+          TAG_SHA=$(gh api "repos/${GITHUB_REPOSITORY}/commits/refs/tags/${TAG}" --jq .sha)
+          [ "$TAG_SHA" = "$BUILT_FROM" ] \
+            || { echo "Tag $TAG is $TAG_SHA, but the media were built from $BUILT_FROM"; exit 1; }
+          echo "built_from=$BUILT_FROM" >> "$GITHUB_OUTPUT"
+
+      - name: Mint change-gate token
+        id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CHANGE_GATE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CHANGE_GATE_APP_KEY }}
+          owner: SagaHealthcareIT
+          repositories: change-control,open-integration-engine-internal
+
+      # The ticket must list the built commit, not github.sha: the workflow
+      # runs from the tip of openshare, which can be later than the release.
+      - name: Change gate
+        id: gate
+        uses: SagaHealthcareIT/change-control/.github/actions/change-gate@01372ead74224e470659cd0272eea16582c2744f
+        with:
+          token: ${{ steps.app.outputs.token }}
+          ticket: ${{ inputs.ticket }}
+          stage: deploy
+          sha: ${{ steps.provenance.outputs.built_from }}
+
       - name: Download signed media from the private release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -93,14 +155,14 @@ jobs:
           gh release download "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --pattern 'openshare_*' \
-            --pattern 'BUNDLED_PLUGIN.txt' \
             --dir release
           echo "Downloaded:"; ls -la release/
 
-      - name: Verify checksums and provenance
+      - name: Verify checksums and public source
         env:
           GH_TOKEN: ${{ secrets.PUBLIC_ENGINE_RELEASE_TOKEN }}
           TAG: ${{ inputs.tag }}
+          BUILT_FROM: ${{ steps.provenance.outputs.built_from }}
         run: |
           set -euo pipefail
           cd release
@@ -117,16 +179,6 @@ jobs:
           done
           [ "$media" -ge 1 ] || { echo "No installer media on release $TAG"; exit 1; }
           echo "media_count=$media" >> "$GITHUB_ENV"
-
-          [ -f BUNDLED_PLUGIN.txt ] || { echo "Release $TAG has no BUNDLED_PLUGIN.txt provenance marker"; exit 1; }
-
-          # The public media must not carry the admin-console plugin; only
-          # sidecar-era releases are plugin-free.
-          grep -qE '^plugin_sidecar=true$' BUNDLED_PLUGIN.txt \
-            || { echo "Release $TAG bakes the plugin into its media; it cannot be published publicly"; exit 1; }
-
-          BUILT_FROM=$(grep -E '^openshare_commit=' BUNDLED_PLUGIN.txt | head -1 | cut -d= -f2- || true)
-          [ -n "$BUILT_FROM" ] || { echo "Provenance marker has no openshare_commit"; exit 1; }
 
           # The source the media were built from must already be public under
           # the same tag. refs/tags/ so a same-named branch can't answer, and
@@ -243,3 +295,39 @@ jobs:
           echo "All $(wc -l < expected.txt) files published (${media_count} media + sidecars):"
           cat published.txt
           echo "https://github.com/${PUBLIC_REPO}/releases/tag/${TAG}"
+
+      # The gate token is minted before a ~2.5 GB download and upload and
+      # lasts an hour, so mint a fresh one for the ticket record.
+      - name: Mint ticket-record token
+        id: app_record
+        if: always() && steps.gate.outcome == 'success'
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CHANGE_GATE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CHANGE_GATE_APP_KEY }}
+          owner: SagaHealthcareIT
+          repositories: change-control
+
+      - name: Record the release on the ticket
+        if: success()
+        env:
+          GH_TOKEN: ${{ steps.app_record.outputs.token }}
+          TICKET: ${{ inputs.ticket }}
+          TAG: ${{ inputs.tag }}
+          BUILT_FROM: ${{ steps.provenance.outputs.built_from }}
+        run: |
+          gh issue comment "$TICKET" --repo SagaHealthcareIT/change-control --body \
+            "Published ${TAG} (built from ${BUILT_FROM}) to the public release https://github.com/${PUBLIC_REPO}/releases/tag/${TAG} by @${GITHUB_TRIGGERING_ACTOR}. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          gh issue edit "$TICKET" --repo SagaHealthcareIT/change-control --add-label deployed
+
+      # A run that passed the gate and then failed may have changed prod
+      # partway, so leave a trace on the ticket (without the deployed label).
+      - name: Record the failed attempt on the ticket
+        if: failure() && steps.app_record.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ steps.app_record.outputs.token }}
+          TICKET: ${{ inputs.ticket }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          gh issue comment "$TICKET" --repo SagaHealthcareIT/change-control --body \
+            "Publishing ${TAG} to the public release https://github.com/${PUBLIC_REPO}/releases/tag/${TAG} FAILED after the change gate passed; the destination may be partly updated. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
