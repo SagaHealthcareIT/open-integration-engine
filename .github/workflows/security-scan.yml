@@ -1,0 +1,292 @@
+# Free, open-source security scanning: secrets (gitleaks), dependencies
+# (OSV-Scanner) and code (Semgrep Community Edition). No paid GitHub add-ons,
+# no third-party accounts or tokens.
+#
+# What each job looks at:
+#   pull_request       only what the PR adds (its commits / changed code / new vulnerable deps)
+#   push               only the pushed range (secrets, SAST); dependencies: the whole tree
+#   workflow_dispatch  full audit: every commit of every branch, the whole tree
+#
+# Tool versions are pinned; bump them together (binaries are checksum-verified).
+name: Security scan
+
+on:
+  pull_request:
+  push:
+    branches: [openshare]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push to a PR supersedes the previous run. Branch pushes are never
+# cancelled: each one scans its own commit range.
+concurrency:
+  group: security-scan-${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || format('{0}-{1}-{2}', github.event_name, github.ref, github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GITLEAKS_VERSION: 8.30.1
+  GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+  OSV_SCANNER_VERSION: 2.6.0
+  OSV_SCANNER_SHA256: ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108
+
+jobs:
+  secrets:
+    name: Secrets (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # PR / push: all commits but no file contents (blob:none, implied by the
+      # sparse checkout); the blobs of the scanned range are fetched below.
+      # workflow_dispatch: full clone for the full-history audit.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          sparse-checkout: ${{ github.event_name != 'workflow_dispatch' && '/.gitleaks*' || '' }}
+          sparse-checkout-cone-mode: false
+
+      - name: Install gitleaks ${{ env.GITLEAKS_VERSION }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: Scan for secrets
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
+          FETCH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # The token is used only for the blob fetch below; gitleaks never sees it.
+          tok="$FETCH_TOKEN"; unset FETCH_TOKEN
+          # Never fetch objects on demand: the checkout has no credentials, and
+          # a missing blob must fail loudly rather than be skipped.
+          export GIT_NO_LAZY_FETCH=1
+          case "$EVENT" in
+            pull_request) range=("$PR_BASE..$PR_HEAD") ;;
+            push)
+              if [[ "$BEFORE" =~ ^0+$ ]] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+                # New branch (or unknown old tip): commits no other branch has.
+                range=("$AFTER" --not --exclude=origin/HEAD "--exclude=origin/$BRANCH" --remotes=origin)
+              else
+                range=("$BEFORE..$AFTER")
+              fi ;;
+            *) range=() ;;
+          esac
+
+          if [ ${#range[@]} -gt 0 ]; then
+            echo "Commit range: ${range[*]} ($(git rev-list --count "${range[@]}") commits)"
+            # Fetch the old and new blob of every file the range touches, in one request.
+            git log --format= --raw --no-abbrev --no-renames "${range[@]}" \
+              | awk '$1 != ":160000" && $2 != "160000" { print $3; print $4 }' \
+              | grep -v '^0*$' | sort -u > "$RUNNER_TEMP/blobs" || true
+            if [ -s "$RUNNER_TEMP/blobs" ]; then
+              auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$tok" | base64 -w0)"
+              git -c "http.https://github.com/.extraheader=$auth" fetch -q --no-tags \
+                --no-write-fetch-head --recurse-submodules=no --filter=blob:none origin --stdin < "$RUNNER_TEMP/blobs"
+              unset auth
+              # gitleaks reports "no leaks" if git cannot read a blob, so prove they are all here.
+              missing=$(git cat-file --batch-check < "$RUNNER_TEMP/blobs" | grep -c ' missing$' || true)
+              if [ "$missing" != 0 ]; then echo "::error::$missing blobs could not be fetched"; exit 1; fi
+            fi
+            args=(--log-opts="${range[*]}")
+          else
+            echo "Full-history scan of all branches"
+            args=()
+          fi
+          unset tok
+          [ -f .gitleaks-baseline.json ] && args+=(--baseline-path .gitleaks-baseline.json)
+
+          # --redact: secret values never reach the log. Findings show rule, file, line and commit.
+          # A .gitleaks.toml at the repo root, if present, is picked up automatically.
+          set +e
+          gitleaks git --redact --no-banner --no-color --verbose "${args[@]}" . 2> "$RUNNER_TEMP/gitleaks.log"
+          rc=$?
+          set -e
+          cat "$RUNNER_TEMP/gitleaks.log" >&2
+          if grep -q ' ERR ' "$RUNNER_TEMP/gitleaks.log"; then echo "::error::gitleaks hit an error; the scan is incomplete"; exit 1; fi
+          exit $rc
+
+  dependencies:
+    name: Dependencies (OSV-Scanner)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Depth 2: on a PR the checked-out merge commit's first parent is the base
+      # branch tip, which is scanned too so the PR is judged only on what it adds.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Install OSV-Scanner ${{ env.OSV_SCANNER_VERSION }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -sSfL -o osv-scanner \
+            "https://github.com/google/osv-scanner/releases/download/v${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"
+          echo "${OSV_SCANNER_SHA256}  osv-scanner" | sha256sum -c -
+          chmod +x osv-scanner
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      # Lockfiles and manifests (npm, bun, Maven with transitive resolution,
+      # pip, ...) plus committed .jar files.
+      # Fails on a HIGH or CRITICAL vulnerability (CVSS >= 7.0, or the
+      # advisory's own rating when it has no CVSS score) that has a fixed
+      # version available. On a PR, only such vulnerabilities that the base
+      # branch does not already have fail the job; the rest are listed.
+      - name: Scan dependencies
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          scan() {
+            local rc=0
+            osv-scanner scan source -r --allow-no-lockfiles --experimental-plugins java/archive \
+              --format json --output-file "$2" "$1" > "$2.log" 2>&1 || rc=$?
+            # 0 = clean, 1 = vulnerabilities found; anything else is a failed scan.
+            if [ "$rc" -gt 1 ]; then cat "$2.log"; echo "::error::osv-scanner failed (exit $rc)"; exit 1; fi
+          }
+          scan . "$RUNNER_TEMP/head.json"
+          if [ "$EVENT" = pull_request ]; then
+            git worktree add -q --detach "$RUNNER_TEMP/base" HEAD^1
+            scan "$RUNNER_TEMP/base" "$RUNNER_TEMP/base.json"
+          fi
+          python3 - "$RUNNER_TEMP/head.json" "$RUNNER_TEMP/base.json" <<'PY'
+          import json, os, sys
+
+          def load(path):
+              if not os.path.exists(path):
+                  return None
+              found = {}
+              for res in json.load(open(path)).get("results") or []:
+                  src = os.path.relpath(res["source"]["path"])
+                  for p in res.get("packages") or []:
+                      pkg = p["package"]
+                      vulns = {v["id"]: v for v in p.get("vulnerabilities") or []}
+                      for g in p.get("groups") or []:
+                          key = (pkg["ecosystem"], pkg["name"], g["ids"][0])
+                          found.setdefault(key, (severity(g, vulns), fixed(pkg, g, vulns), pkg.get("version"), ", ".join(g["ids"]), src))
+              return found
+
+          def severity(group, vulns):
+              try:
+                  s = float(group.get("max_severity") or "")
+                  return "CRITICAL" if s >= 9 else "HIGH" if s >= 7 else "MEDIUM" if s >= 4 else "LOW"
+              except ValueError:
+                  labels = {(vulns.get(i, {}).get("database_specific") or {}).get("severity", "").upper() for i in group["ids"]}
+                  for level in ("CRITICAL", "HIGH", "MODERATE", "MEDIUM", "LOW"):
+                      if level in labels:
+                          return "MEDIUM" if level == "MODERATE" else level
+                  return "UNKNOWN"
+
+          def fixed(pkg, group, vulns):
+              for i in group["ids"]:
+                  for aff in vulns.get(i, {}).get("affected", []):
+                      if aff.get("package", {}).get("name") != pkg["name"]:
+                          continue
+                      if any("fixed" in e for r in aff.get("ranges", []) for e in r.get("events", [])):
+                          return True
+              return False
+
+          head, base = load(sys.argv[1]) or {}, load(sys.argv[2])
+          levels = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"]
+          counts = " | ".join(f"{l}: {sum(1 for v in head.values() if v[0] == l)}" for l in levels)
+          gate = {k: v for k, v in head.items() if v[0] in ("CRITICAL", "HIGH") and v[1]}
+          blocking = {k: v for k, v in gate.items() if base is None or k not in base}
+          existing = {k: v for k, v in gate.items() if k not in blocking}
+
+          out = [f"Vulnerabilities: {counts}",
+                 f"HIGH/CRITICAL with a fix available: {len(gate)}"
+                 + (f" ({len(blocking)} introduced by this PR, {len(existing)} already on the base branch)" if base is not None else "")]
+          rows = [("BLOCKING" if k in blocking else "existing", v[0], f"{k[1]}@{v[2]}", v[3], v[4]) for k, v in sorted(gate.items(), key=lambda kv: (kv[0] not in blocking, kv[1][0], kv[0][1]))]
+          print("\n".join(out))
+          for r in rows:
+              print("  %-8s %-8s %s  %s  (%s)" % r)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("### OSV-Scanner\n\n" + "\n\n".join(out) + "\n\n")
+              if rows:
+                  f.write("| | Severity | Package | Advisory | Manifest |\n|---|---|---|---|---|\n")
+                  f.writelines("| %s | %s | %s | %s | %s |\n" % r for r in rows)
+          if blocking:
+              print(f"::error::{len(blocking)} HIGH/CRITICAL vulnerable dependency version(s) with a fix available. Upgrade them.")
+              sys.exit(1)
+          PY
+
+  sast:
+    name: SAST (Semgrep)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container:
+      image: semgrep/semgrep:1.178.0@sha256:32e459968daabe7ab86968184a29109b9564aa00392401156f9788452b42786b
+    steps:
+      # All commits, but only the checked-out tree's file contents; the old
+      # versions of the changed files are fetched below for the baseline.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+
+      # PR: report only findings the PR introduces (baseline = the base branch
+      # tip that GitHub merged the PR into). Push: only what the push
+      # introduces. workflow_dispatch: the whole tree.
+      - name: Semgrep (p/default)
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          FETCH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          # The container runs as root; the workspace is owned by the runner user.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          # The token is used only for the blob fetch below; semgrep never sees it.
+          tok="$FETCH_TOKEN"; unset FETCH_TOKEN
+          export GIT_NO_LAZY_FETCH=1
+          baseline=""
+          case "$EVENT" in
+            pull_request) baseline=$(git rev-parse HEAD^1) ;;
+            push) if ! echo "$BEFORE" | grep -qE '^0+$' && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then baseline="$BEFORE"; fi ;;
+          esac
+          if [ -n "$baseline" ]; then
+            echo "Reporting only findings not present at $baseline"
+            export SEMGREP_BASELINE_COMMIT="$baseline"
+            # Semgrep checks out the baseline; fetch the old versions of the changed files in one request.
+            git diff --raw --no-abbrev --no-renames "$baseline" HEAD \
+              | awk '$1 != ":160000" { print $3 }' | grep -v '^0*$' | sort -u > /tmp/blobs || true
+            if [ -s /tmp/blobs ]; then
+              auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$tok" | base64 -w0)"
+              git -c "http.https://github.com/.extraheader=$auth" fetch -q --no-tags \
+                --no-write-fetch-head --recurse-submodules=no --filter=blob:none origin --stdin < /tmp/blobs
+              unset auth
+            fi
+          else
+            echo "Scanning the whole tree"
+          fi
+          unset tok
+          rc=0
+          semgrep scan --config p/default --metrics=off --disable-version-check \
+            --json-output=/tmp/semgrep.json || rc=$?
+          # 0 = ran (findings or not), 1 = findings with --error; anything else is a failed run.
+          if [ "$rc" -gt 1 ]; then echo "::error::semgrep failed (exit $rc)"; exit "$rc"; fi
+          # Block on WARNING/MEDIUM and above; INFO/LOW findings are shown but do not fail the job.
+          total=$(jq '.results | length' /tmp/semgrep.json)
+          blocking=$(jq '[.results[] | select(.extra.severity | IN("INFO", "LOW") | not)] | length' /tmp/semgrep.json)
+          printf '### Semgrep\n\n%s finding(s), %s blocking (WARNING/MEDIUM or higher)%s\n' \
+            "$total" "$blocking" "${baseline:+, new relative to \`$baseline\`}" >> "$GITHUB_STEP_SUMMARY"
+          echo "$total finding(s), $blocking blocking"
+          if [ "$blocking" -gt 0 ]; then
+            echo "::error::$blocking Semgrep finding(s) at WARNING or higher. Fix them, or suppress a false positive with a 'nosemgrep: <rule-id>' comment that says why."
+            exit 1
+          fi
