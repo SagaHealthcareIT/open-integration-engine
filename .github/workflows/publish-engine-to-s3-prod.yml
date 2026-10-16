@@ -17,13 +17,13 @@ name: Publish Engine to S3 (prod)
 # tools/release-signed.sh. Prod reuses the SAME signed media as dev; only the
 # target bucket/role differ.
 #
-# A prod publish is a prod change: the run must name an approved
-# change-control ticket that lists the commit the media were built from
-# (openshare_commit in the release's BUNDLED_PLUGIN.txt), and the change gate
-# checks it before any media is downloaded. A rollback (re-dispatching an
-# older tag) is a prod change too and should get its own ticket; the gate
-# does not refuse an old ticket that is still open and authorized, so close
-# tickets once they're deployed.
+# A prod publish is a prod change: the run must name a change-control ticket,
+# approved as the change policy requires, that lists the commit the media
+# were built from (openshare_commit in the release's BUNDLED_PLUGIN.txt), and
+# the change gate checks it before any media is downloaded. A rollback
+# (re-dispatching an older tag) is a prod change too and should get its own
+# ticket; the gate does not refuse an old ticket that is still open and
+# authorized, so close tickets once they're deployed.
 #
 # No `environment:` yet: the prod role's OIDC trust pins
 # sub=repo:...:ref:refs/heads/openshare, and a job in an environment presents
@@ -54,6 +54,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # The change gate trusts the job it runs in: this workflow and the steps
+      # before the gate must come from the reviewed production branch. The prod
+      # role's OIDC trust refuses other branches too, but only at the AWS step,
+      # after the gate has already recorded a pass on the ticket. This catches
+      # a mistaken dispatch; the OIDC trust remains the boundary.
+      - name: Require openshare
+        run: |
+          [[ "$GITHUB_REF" == refs/heads/openshare ]] || { echo "Dispatch this workflow from openshare, not $GITHUB_REF"; exit 1; }
+
       - name: Validate tag input
         env:
           TAG: ${{ inputs.tag }}
@@ -111,9 +120,18 @@ jobs:
 
       # The ticket must list the built commit, not github.sha: the workflow
       # runs from the tip of openshare, which can be later than the release.
+      # No release-pr: a dispatch publishes an existing release, which the gate
+      # treats as a no-PR change, approved by the ticket's labels. The ticket
+      # links the merged, approved openshare PR that shipped the commit (every
+      # PR it links into openshare must be merged). To re-publish an existing
+      # openshare-v* release, an approver may instead apply
+      # pre-existing-artifact (before `authorized`).
+      # Pinned at change-control b54809c (change-control #4), the commit
+      # mdds-llm-infra's prod-change-ticket-guard.sh and the contact-system-api
+      # and mirthWebApp prod deploy pipelines pin; re-pin them together.
       - name: Change gate
         id: gate
-        uses: SagaHealthcareIT/change-control/.github/actions/change-gate@01372ead74224e470659cd0272eea16582c2744f
+        uses: SagaHealthcareIT/change-control/.github/actions/change-gate@b54809ca03bc3f83aa828022b214d49937f0ba31
         with:
           token: ${{ steps.app.outputs.token }}
           ticket: ${{ inputs.ticket }}
