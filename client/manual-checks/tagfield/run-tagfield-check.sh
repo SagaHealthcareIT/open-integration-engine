@@ -4,7 +4,7 @@
 #
 # Runs TagFieldCheck against a JavaFX-bearing JDK. See README.md.
 #
-# Usage: ./run-tagfield-check.sh [/path/to/jdk-home]
+# Usage: ./run-tagfield-check.sh [--classes] [/path/to/jdk-home]
 #        Defaults to $JAVA_HOME. The JDK must bundle JavaFX (a "jdk+fx" build); a plain JDK
 #        will fail at toolkit startup, which is a broken check, not a failed one.
 
@@ -13,6 +13,11 @@ set -euo pipefail
 CHECK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLIENT_DIR="$(cd "${CHECK_DIR}/../.." && pwd)"
 
+USE_CLASSES=false
+if [[ "${1:-}" == "--classes" ]]; then
+    USE_CLASSES=true
+    shift
+fi
 JDK_HOME="${1:-${JAVA_HOME:-}}"
 if [[ -z "${JDK_HOME}" ]]; then
     echo "error: pass a JDK home as the first argument, or set JAVA_HOME." >&2
@@ -28,13 +33,21 @@ if [[ ! -x "${JDK_HOME}/bin/java" ]]; then
     exit 64
 fi
 
-if [[ ! -d "${CLIENT_DIR}/classes" ]]; then
-    echo "error: ${CLIENT_DIR}/classes not found. Build the client first:" >&2
-    echo "  cd server && ant -f mirth-build.xml -DdisableSigning=true -Dskip.build.tests=true" >&2
+# Default to the built mirth-client.jar: every real launch loads the page from inside it, as
+# jar: URLs, which is the scheme the July 2026 OpenJFX update stopped loading from loadContent
+# pages. --classes runs against client/classes instead (file: URLs), which does not exercise that.
+if [[ "${USE_CLASSES}" == "true" ]]; then
+    CLIENT_CP="${CLIENT_DIR}/classes"
+else
+    CLIENT_CP="${CLIENT_DIR}/dist/mirth-client.jar"
+fi
+if [[ ! -e "${CLIENT_CP}" ]]; then
+    echo "error: ${CLIENT_CP} not found. Build the client first:" >&2
+    echo "  cd server && ant -f mirth-build.xml -DdisableSigning=true -DdisableTests=true" >&2
     exit 65
 fi
 
-CP="${CLIENT_DIR}/classes:${CLIENT_DIR}/lib/*"
+CP="${CLIENT_CP}:${CLIENT_DIR}/lib/*"
 OUT="${CHECK_DIR}/out"
 
 echo "--- compiling the check"

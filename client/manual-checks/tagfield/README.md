@@ -30,8 +30,8 @@ reintroduces the `WebEngine.loadContent` approach that caused IRT-2431.
 
 ## Prerequisites
 
-1. A built client, so `client/classes` exists:
-   `cd server && ant -f mirth-build.xml -DdisableSigning=true -Dskip.build.tests=true`
+1. A built client, so `client/dist/mirth-client.jar` exists:
+   `cd server && ant -f mirth-build.xml -DdisableSigning=true -DdisableTests=true`
 2. A JDK that bundles JavaFX (a `jdk+fx` build, for example Azul Zulu FX). A plain JDK fails at
    toolkit startup, which is a broken check rather than a failing one.
 3. A desktop session. Do not run this over a plain SSH connection.
@@ -42,7 +42,12 @@ reintroduces the `WebEngine.loadContent` approach that caused IRT-2431.
 client/manual-checks/tagfield/run-tagfield-check.sh /path/to/jdk-fx-home
 ```
 
-With no argument it uses `$JAVA_HOME`. Both Azul layouts are handled: some bundles are flat,
+It runs against `client/dist/mirth-client.jar`, so the page and its resources load as `jar:`
+URLs, as in every real launch; that is the scheme the July 2026 OpenJFX update stopped loading
+from `loadContent` pages. `--classes` (before the JDK path) runs against `client/classes`
+instead, whose `file:` URLs do not exercise that path.
+
+With no JDK argument it uses `$JAVA_HOME`. Both Azul layouts are handled: some bundles are flat,
 others nest under `Contents/Home`.
 
 Exit status: 0 pass, 1 the browser could not be constructed, 2 the page loaded but its scripts

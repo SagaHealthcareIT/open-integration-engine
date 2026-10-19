@@ -194,7 +194,7 @@ public class AutoCompletionPopupWindow extends JTextField {
     }
 
     private void doCall(final String method, final Object... args) {
-        // Never set when the tag field's page failed to start; there is nothing to call (IRT-2431).
+        // Never set when the tag field's WebView could not be built at all; there is nothing to call (IRT-2431).
         if (engineCtrl == null) {
             return;
         }
