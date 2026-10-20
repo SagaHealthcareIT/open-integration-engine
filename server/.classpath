@@ -209,22 +209,38 @@
 	<classpathentry kind="lib" path="lib/commons/commons-codec-1.21.0.jar"/>
 	<classpathentry kind="lib" path="lib/commons/httpcore-4.4.13.jar"/>
 	<classpathentry kind="lib" path="lib/database/mssql-jdbc-13.2.1.jre11.jar"/>
-	<classpathentry kind="lib" path="lib/aws/annotations-2.15.28.jar"/>
-	<classpathentry kind="lib" path="lib/aws/apache-client-2.15.28.jar"/>
-	<classpathentry kind="lib" path="lib/aws/auth-2.15.28.jar"/>
-	<classpathentry kind="lib" path="lib/aws/aws-core-2.15.28.jar"/>
-	<classpathentry kind="lib" path="lib/aws/aws-json-protocol-2.15.28.jar"/>
-	<classpathentry kind="lib" path="lib/aws/aws-query-protocol-2.15.28.jar"/>
-	<classpathentry kind="lib" path="lib/aws/aws-xml-protocol-2.15.28.jar"/>
-	<classpathentry kind="lib" path="lib/aws/http-client-spi-2.15.28.jar"/>
-	<classpathentry kind="lib" path="lib/aws/kms-2.15.28.jar"/>
-	<classpathentry kind="lib" path="lib/aws/profiles-2.15.28.jar"/>
-	<classpathentry kind="lib" path="lib/aws/protocol-core-2.15.28.jar"/>
-	<classpathentry kind="lib" path="lib/aws/regions-2.15.28.jar"/>
-	<classpathentry kind="lib" path="lib/aws/s3-2.15.28.jar"/>
-	<classpathentry kind="lib" path="lib/aws/sdk-core-2.15.28.jar"/>
-	<classpathentry kind="lib" path="lib/aws/sts-2.15.28.jar"/>
-	<classpathentry kind="lib" path="lib/aws/utils-2.15.28.jar"/>
+	<classpathentry kind="lib" path="lib/aws/annotations-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/apache-client-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/arns-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/auth-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/aws-core-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/aws-json-protocol-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/aws-query-protocol-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/aws-xml-protocol-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/checksums-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/checksums-spi-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/crt-core-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/endpoints-spi-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/http-auth-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/http-auth-aws-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/http-auth-aws-eventstream-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/http-auth-spi-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/http-client-spi-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/identity-spi-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/json-utils-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/kms-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/metrics-spi-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/profiles-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/protocol-core-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/regions-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/retries-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/retries-spi-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/s3-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/sdk-core-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/sts-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/third-party-jackson-core-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/utils-2.55.8.jar"/>
+	<classpathentry kind="lib" path="lib/aws/utils-lite-2.55.8.jar"/>
 	<classpathentry kind="lib" path="lib/aws/ext/reactive-streams-1.0.3.jar"/>
 	<classpathentry kind="lib" path="lib/commons/httpclient-4.5.13.jar"/>
 	<classpathentry kind="lib" path="lib/commons/httpmime-4.5.13.jar"/>
@@ -236,7 +252,6 @@
 	<classpathentry kind="lib" path="lib/jackson/jackson-datatype-jsr310-2.18.9.jar"/>
 	<classpathentry kind="lib" path="lib/donkey/slf4j-api-1.7.30.jar"/>
 	<classpathentry kind="lib" path="lib/donkey/slf4j-log4j12-1.7.30.jar"/>
-	<classpathentry kind="lib" path="lib/aws/metrics-spi-2.15.28.jar"/>
 	<classpathentry kind="lib" path="lib/database/postgresql-42.7.12.jar"/>
 	<classpathentry kind="lib" path="lib/extensions/doc/openhtmltopdf-core-1.0.9.jar"/>
 	<classpathentry kind="lib" path="lib/extensions/doc/openhtmltopdf-pdfbox-1.0.9.jar"/>
