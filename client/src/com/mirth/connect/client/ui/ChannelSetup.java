@@ -181,6 +181,19 @@ public class ChannelSetup extends JPanel {
     }
 
     private void saveChannelTags() {
+        /*
+         * If the tag field is not working, its tag list is empty rather than this channel's real
+         * tags, and saving that would remove every tag from the channel on the server (IRT-2431,
+         * OpenIntegrationEngine/engine#434). Send the channel's current tags from the cache instead.
+         * Returning without rebuilding them is not enough: after the first save currentChannel is
+         * re-cloned from the channel cache, whose channels carry no tags (the server strips export
+         * data before storing), so a second save would still clear every tag.
+         */
+        if (!tagsField.isAvailable()) {
+            setChannelTags();
+            return;
+        }
+
         currentChannel.getExportData().getChannelTags().clear();
 
         List<SearchFilter> filters = SearchFilterParser.parse(tagsField.getTags(), parent.getCachedChannelTags());
