@@ -49,7 +49,6 @@ import com.mirth.connect.userutil.MessageHeaders;
 import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
-import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
@@ -107,15 +106,15 @@ public class S3ConnectionTest {
         assertEquals(AnonymousCredentialsProvider.class, provider.getClass());
         assertEquals(AwsBasicCredentials.class, provider.resolveCredentials().getClass());
 
-        // Null credentials with DCPC
+        // Null credentials with DCPC: the shared default chain, behind a view clients cannot close
         fileSystemOptions = getOptions(false, null, null, true, true);
         provider = s3Conn.createCredentialsProvider(fileSystemOptions);
-        assertEquals(DefaultCredentialsProvider.class, provider.getClass());
+        assertSharedDefaultChain(provider);
 
         // Blank credentials with DCPC
         fileSystemOptions = getOptions(false, " ", " ", true, true);
         provider = s3Conn.createCredentialsProvider(fileSystemOptions);
-        assertEquals(DefaultCredentialsProvider.class, provider.getClass());
+        assertSharedDefaultChain(provider);
 
         // Null credentials without DCPC
         String accessKeyId = null;
@@ -544,6 +543,12 @@ public class S3ConnectionTest {
         err = AwsServiceException.builder().message("").awsErrorDetails(AwsErrorDetails.builder().errorCode("ExpiredToken").build()).build();
         s3Conn.handleException(err);
         verify(client, atLeastOnce()).close();
+    }
+
+    private void assertSharedDefaultChain(AwsCredentialsProvider provider) {
+        assertFalse(provider instanceof AutoCloseable);
+        assertFalse(provider instanceof AnonymousCredentialsProvider);
+        assertFalse(provider instanceof StaticCredentialsProvider);
     }
 
     private S3Connection getConnection() throws Exception {

@@ -74,6 +74,12 @@ public class S3Connection implements FileSystemConnection {
 
     static final String DELIMITER = "/";
 
+    // One default credential chain for the JVM, as DefaultCredentialsProvider.create() was on SDK
+    // 2.15.28, so connections share its cached credentials. It is built on first use and kept. It is
+    // ours rather than that deprecated singleton, so other code closing the singleton cannot affect
+    // S3 connections.
+    private static final DefaultCredentialsProvider DEFAULT_CREDENTIALS_PROVIDER = DefaultCredentialsProvider.builder().build();
+
     public class S3FileInfo implements FileInfo {
 
         private String bucketName;
@@ -201,7 +207,13 @@ public class S3Connection implements FileSystemConnection {
         if (fileSystemOptions.isAnonymous()) {
             return AnonymousCredentialsProvider.create();
         } else if (schemeProps.isUseDefaultCredentialProviderChain() && StringUtils.isBlank(fileSystemOptions.getUsername()) && StringUtils.isBlank(fileSystemOptions.getPassword())) {
-            return DefaultCredentialsProvider.create();
+            /*
+             * Closing an S3Client or StsClient closes its credentials provider, and on newer SDKs that
+             * reaches the chain's own STS clients (role-assuming profiles, web identity). Hand out a
+             * view that cannot be closed, so one connection's destroy() leaves the chain working for
+             * the others.
+             */
+            return () -> DEFAULT_CREDENTIALS_PROVIDER.resolveCredentials();
         } else {
             return StaticCredentialsProvider.create(AwsBasicCredentials.create(fileSystemOptions.getUsername(), fileSystemOptions.getPassword()));
         }
