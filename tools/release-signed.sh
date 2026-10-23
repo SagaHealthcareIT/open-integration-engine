@@ -9,7 +9,10 @@
 #   3. build + Authenticode-sign the installers/launchers  (install4jc)
 #   4. verify a built Windows installer's signature
 #
-# You are prompted for the token PIN ONCE; it is reused for steps 2 and 3.
+# You are prompted for the token PIN twice: once up front for the jar signing
+# (step 2 reads it from the environment), and once by install4jc itself for
+# the installer signing (step 3). The PIN is never passed as a command-line
+# argument, where any local user could read it from ps.
 #
 # The admin-console plugin is NOT baked into the media. The console's engine
 # download delivers the current signed plugin ZIP alongside the installer in
@@ -152,9 +155,12 @@ fi
 # --release stamps the upstream-derived version into media filenames +
 # installer metadata (same mechanism upstream uses to get -rcN media out of a
 # plain-X.Y.Z config).
-echo "==> [3/4] Building + signing installers (version $RELEASE_VERSION)"
-"$INSTALL4JC" --win-keystore-password "$TOKEN_PIN" --release "$RELEASE_VERSION" -b "$MEDIA_IDS" "$CONFIG"
+# No --win-keystore-password: it would put the PIN in the process list for the
+# whole build. Without it, install4jc prompts for the PIN itself.
 unset TOKEN_PIN
+echo "==> [3/4] Building + signing installers (version $RELEASE_VERSION)"
+echo "    install4jc will ask for the eToken PIN again (Windows code signing)"
+"$INSTALL4JC" --release "$RELEASE_VERSION" -b "$MEDIA_IDS" "$CONFIG"
 
 # --- 4. Verify a built Windows installer's Authenticode signature ----------
 echo "==> [4/4] Verifying signature"
