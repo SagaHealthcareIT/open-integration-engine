@@ -87,16 +87,19 @@ if [ -n "${TOKEN_PIN:-}" ]; then
 else
   read -rsp "Enter eToken PIN: " PKCS11_STOREPASS; echo
 fi
+# keytool and jarsigner read the PIN from the environment (-storepass:env), never
+# from their command line, where any local user could read it from ps.
+export PKCS11_STOREPASS
 keytool -list -keystore NONE -storetype PKCS11 \
   -providerClass sun.security.pkcs11.SunPKCS11 -providerArg "$PKCS11_CFG" \
-  -storepass "$PKCS11_STOREPASS" >/dev/null 2>&1 \
+  -storepass:env PKCS11_STOREPASS >/dev/null 2>&1 \
   || { echo "ERROR: token PIN rejected or token inaccessible." >&2; exit 1; }
 
 echo "Assembling certificate chain..."
 CERTCHAIN_FILE="$(mktemp /tmp/certchain.XXXXXX.pem)"
 keytool -exportcert -keystore NONE -storetype PKCS11 \
   -providerClass sun.security.pkcs11.SunPKCS11 -providerArg "$PKCS11_CFG" \
-  -storepass "$PKCS11_STOREPASS" -alias "$SIGNING_ALIAS" -rfc > "$CERTCHAIN_FILE" 2>/dev/null
+  -storepass:env PKCS11_STOREPASS -alias "$SIGNING_ALIAS" -rfc > "$CERTCHAIN_FILE" 2>/dev/null
 _tmp="$(mktemp)"
 if curl -sf "$SECTIGO_INTERMEDIATE_URL" -o "$_tmp"; then
   openssl x509 -in "$_tmp" -inform DER >> "$CERTCHAIN_FILE" 2>/dev/null || true
@@ -128,7 +131,7 @@ sign_one() {             # $1 = jar ; retry for flaky TSA (mirrors Ant retrycoun
   local jar="$1" attempt=1
   until jarsigner -keystore NONE -storetype PKCS11 \
           -providerClass sun.security.pkcs11.SunPKCS11 -providerArg "$PKCS11_CFG" \
-          -storepass "$PKCS11_STOREPASS" \
+          -storepass:env PKCS11_STOREPASS \
           -certchain "$CERTCHAIN_FILE" -tsa "$SECTIGO_TSA_URL" \
           -sigalg "$SIG_ALG" -digestalg "$DIGEST_ALG" \
           "$jar" "$SIGNING_ALIAS" >/dev/null 2>&1; do
