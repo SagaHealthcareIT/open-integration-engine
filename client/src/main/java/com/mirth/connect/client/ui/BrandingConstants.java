@@ -31,7 +31,7 @@ public class BrandingConstants {
     public static String HELP_URL_LOCATION = "https://docs.openshare.health";
 
     // The URL that is opened when clicking "System Requirements" button in the error dialog when an unsupported Java version is detected
-    public static final String SYSTEM_REQUIREMENTS_URL = "https://docs.openintegrationengine.org/engine/getting_started.html#system-requirements";
+    public static final String SYSTEM_REQUIREMENTS_URL = "https://docs.openshare.health";
 
     // The "More info" in Server settings "Provide usage statistics"
     public static final String PRIVACY_URL = "https://openshare.health/privacy";

@@ -1,12 +1,12 @@
 <jnlp>
 	<information>
-		<title>Open Integration Engine</title>
-		<vendor>Open Integration Engine</vendor>
-		<homepage href="https://openintegrationengine.org/"/>
+		<title>OpenShare Engine</title>
+		<vendor>OpenShare</vendor>
+		<homepage href="https://openshare.health/"/>
 		<description>Open Source Healthcare Integration Engine</description>
 		
-		<icon href="images/oie_logo_only_white_background_48x48.png"/>
-		<icon href="images/oie_logo_only_white_background_48x48.png" kind="splash"/> 
+		<icon href="images/openshare_logo_only_white_background_48x48.png"/>
+		<icon href="images/openshare_logo_only_white_background_48x48.png" kind="splash"/> 
 		
 		<offline-allowed/>
 
@@ -14,7 +14,7 @@
             <!-- put a shortcut on the desktop -->
             <desktop/>
             <!-- put shortcut in start menu too -->
-            <menu submenu="Open Integration Engine"/>
+            <menu submenu="OpenShare Engine"/>
     	</shortcut>
     	
 	</information>
