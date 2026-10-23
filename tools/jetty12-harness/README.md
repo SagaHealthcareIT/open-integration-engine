@@ -7,8 +7,8 @@ changes, and must measure identically after each migration stage.
 
 ## JUnit characterization tests (run with the normal suite)
 
-Located under `server/test/`, named `*CharacterizationTest`, and run by `ant test-run` along with
-everything else:
+Located under `server/src/test/java/`, named `*CharacterizationTest`, and run by `./gradlew test`
+along with everything else:
 
 | Test | Pins |
 |---|---|
@@ -35,14 +35,7 @@ a 9.4 build, read by the Jetty 12 build (the pre-upgrade-rows check).
 ### Running just the harness classes
 
 ```bash
-cd server
-ant -q test-compile
-java -Xshare:off -cp "testlib/*:test_classes:classes:$(find lib -name '*.jar' | tr '\n' ':')" \
-    org.junit.runner.JUnitCore \
-    com.mirth.connect.connectors.http.HttpListenerCharacterizationTest \
-    com.mirth.connect.plugins.httpauth.digest.DigestAuthenticatorCharacterizationTest \
-    com.mirth.connect.server.JdbcSessionStoreCharacterizationTest \
-    com.mirth.connect.server.DatabaseAdaptorBlobTypeCharacterizationTest
+./gradlew :server:test --tests '*CharacterizationTest'
 ```
 
 ## Serving matrix (run against a live install)

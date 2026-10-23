@@ -8,15 +8,15 @@
 ---
 ## OpenShare Engine (this branch)
 
-The `openshare` branch is **OpenShare Engine**, [Saga IT](https://saga-it.com)'s build of the Open Integration Engine: upstream OIE plus OpenShare branding, signed Windows and Linux installers, a Java 21 runtime, and fixes that have not yet landed upstream. It is the source for every OpenShare Engine binary we distribute, and it is published here under the same [MPL 2.0](LICENSE) as upstream so that anyone receiving those binaries can obtain and modify the corresponding source.
+The `openshare` release branches (`openshare-4.7` for the 4.7.0 line, `openshare` for 4.6.0-x) are **OpenShare Engine**, [Saga IT](https://saga-it.com)'s build of the Open Integration Engine: upstream OIE plus OpenShare branding, signed Windows and Linux installers, a Java 21 runtime, and fixes that have not yet landed upstream. It is the source for every OpenShare Engine binary we distribute, and it is published here under the same [MPL 2.0](LICENSE) as upstream so that anyone receiving those binaries can obtain and modify the corresponding source.
 
-- **Releases:** each build is tagged `openshare-v<upstream version>-<n>` (for example `openshare-v4.6.0-7`). The tag names the exact commit a set of installers and container images was built from; the media's provenance file records the same commit.
+- **Releases:** each build is tagged `openshare-v<upstream version>-<n>` (for example `openshare-v4.7.0-1`). The tag names the exact commit a set of installers and container images was built from; the media's provenance file records the same commit.
 - **Binaries:** installers come from the engine download in the [OpenShare console](https://openshare.health); container images are on Docker Hub as [`sagait/openshare-engine`](https://hub.docker.com/r/sagait/openshare-engine).
-- **Upstream:** [OpenIntegrationEngine/engine](https://github.com/OpenIntegrationEngine/engine). This branch is based on an upstream release tag (currently `v4.6.0`) rather than upstream `main`; fixes we make are offered upstream where they apply.
-- **Building:** this branch still uses the Ant build (`server/mirth-build.xml`). It needs a JDK of at least 19 that bundles JavaFX (the Derby 10.17 tools jar is compiled for Java 19; the Administrator client compiles against JavaFX). `cd server && ant compile test-run` runs the server test suite.
-- **Security:** OpenShare Engine 4.6.0-7 fixes CVE-2026-82583, CVE-2026-78224 and CVE-2026-82578 (CISA advisory ICSMA-26-253-01) and ports the upstream metadata-search fix (OIE #361). Report security issues to security@saga-it.com.
+- **Upstream:** [OpenIntegrationEngine/engine](https://github.com/OpenIntegrationEngine/engine). Each release branch is based on an upstream release tag (this one on `v4.7.0`) rather than upstream `main`; fixes we make are offered upstream where they apply.
+- **Building:** upstream's Gradle build (`./gradlew build -PdisableSigning=true`; output in `server/setup`, tests with `./gradlew test`). Gradle compiles with a JDK 21 toolchain (the Derby 10.17 tools jar is Java 19 bytecode) and emits Java 17 bytecode; `.sdkmanrc` pins `21.0.12.fx-zulu`. Dependencies are declared in `gradle/libs.versions.toml` and checksum-pinned in `gradle/verification-metadata.xml`; do not add jars under `*/lib` (the ones there are upstream's, for libraries with no Maven Central artifact), because Gradle ships every jar it finds there. Signed media come from `tools/release-signed.sh`.
+- **Security:** upstream 4.7.0, and so OpenShare Engine 4.7.0-x, fixes CVE-2026-82583, CVE-2026-78224 and CVE-2026-82578 (CISA advisory ICSMA-26-253-01) and the metadata-search issue (OIE #361); OpenShare Engine 4.6.0-7 and later carried our own fixes for them. Report security issues to security@saga-it.com.
 
-**Trademarks and branding.** "OpenShare" and the OpenShare logos are trademarks of Saga IT, LLC. The artwork under `branding/openshare/` and the client branding images (`client/src/com/mirth/connect/client/ui/images/branding/`, `server/public_api_html/images/`) are copyright Saga IT, LLC and are **not** licensed under the MPL; they are in this repository only so the branch builds as shipped. MPL 2.0 section 2.3 grants no trademark rights in any case. If you redistribute a modified build, replace the name and the branding with your own. "Mirth Connect" is a trademark of NextGen Healthcare; "Open Integration Engine" belongs to the upstream project.
+**Trademarks and branding.** "OpenShare" and the OpenShare logos are trademarks of Saga IT, LLC. The artwork under `branding/openshare/` and the client branding images (`client/src/main/resources/com/mirth/connect/client/ui/images/branding/`, `server/public_api_html/images/`) are copyright Saga IT, LLC and are **not** licensed under the MPL; they are in this repository only so the branches build as shipped. MPL 2.0 section 2.3 grants no trademark rights in any case. If you redistribute a modified build, replace the name and the branding with your own. "Mirth Connect" is a trademark of NextGen Healthcare; "Open Integration Engine" belongs to the upstream project.
 
 The rest of this README is upstream's and describes the Open Integration Engine project itself.
 
@@ -88,7 +88,7 @@ The **Open Integration Engine Project** is an open-source initiative committed t
 
 ## Building from Source
 
-The build is driven by Gradle through the committed wrapper; the only prerequisite is JDK 17 (see [.sdkmanrc](.sdkmanrc)):
+The build is driven by Gradle through the committed wrapper; the only prerequisite is JDK 21 (see [.sdkmanrc](.sdkmanrc)):
 
 ```bash
 ./gradlew build              # full build + tests; distribution lands in server/setup
