@@ -9,9 +9,6 @@ import java.text.SimpleDateFormat
 dependencies {
     implementation libs.bundles.server.main
     implementation libs.bundles.server.extensions
-    // classified artifact: the catalog entry carries the version, the
-    // classifier is selected here
-    implementation(variantOf(libs.netty.transport.native.epoll) { classifier('linux-x86_64') })
     testImplementation libs.bundles.server.test
 }
 
@@ -924,6 +921,7 @@ tasks.register('createDerbyDb', JavaExec) {
                 include 'log4j/log4j-api-*.jar'
                 include 'log4j/log4j-core-*.jar'
                 include 'database/derby-1*.jar'
+                include 'database/derbyshared-*.jar'
                 include 'database/derbytools-*.jar'
                 include 'commons/commons-io-*.jar'
             }

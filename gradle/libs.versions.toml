@@ -8,36 +8,40 @@
 # gradle/verification-metadata.xml enforces checksums (regenerate it with
 # a cold cache after any change here, see CONTRIBUTING.md), and
 # gradle/vendored-layout.json places each artifact in the distribution.
+#
+# OpenShare Engine: this catalog carries the openshare fork's dependency
+# set on top of upstream's: Jetty 12.0.38 (EE8 environment) in place of
+# 9.4, AWS SDK v2 2.55.8 without the netty async client, Derby 10.17.1.0
+# (+derbyshared), jackson 2.18.9 across all modules, swagger 2.2.31,
+# BouncyCastle 1.84, xstream 1.4.21, mybatis 3.5.6, mssql-jdbc 13.2.1 and
+# OpenPDF/OpenRTF in place of iText 2.1.7. Each coordinate was SHA-1
+# matched to the jar the openshare 4.6.0-x branch vendored.
 
 [versions]
 # Shared by artifacts released together; bump the whole family at once.
 asm = "9.6"
-awssdk = "2.15.28"
-bouncycastle = "1.78.1"
+awssdk = "2.55.8"
+bouncycastle = "1.84"
 byte-buddy = "1.14.13"
-derby = "10.10.2.0"
+derby = "10.17.1.0"
 flying-saucer = "9.0.1"
 hapi = "2.3"
 hk2 = "2.4.0-b31"
 httpclient = "4.5.13"
-itext = "2.1.7"
-# do not bump past 2.15.x before reading the note on jackson-core
-jackson = "2.14.3"
-jasper = "8.5.70"
+jackson = "2.18.9"
+jasper = "9.0.102"
 jaxb-ri = "2.4.0-b180725.0644"
 jaxws-ri = "2.3.0.2"
 jersey = "2.22.1"
-jetty = "9.4.57.v20241219"
+jetty = "12.0.38"
 jna = "4.5.2"
 log4j = "2.26.1"
 miglayout = "4.2"
 mockito = "5.1.1"
-netty = "4.1.137.Final"
-netty-reactive-streams = "2.0.8"
 openhtmltopdf = "1.0.9"
 pdfbox = "2.0.24"
 slf4j = "1.7.30"
-swagger = "2.0.10"
+swagger = "2.2.31"
 taglibs = "1.2.5"
 
 [libraries]
@@ -49,23 +53,36 @@ asm-util = { module = "org.ow2.asm:asm-util", version.ref = "asm" }
 aws-eventstream = { module = "software.amazon.eventstream:eventstream", version = "1.0.1" }
 awssdk-annotations = { module = "software.amazon.awssdk:annotations", version.ref = "awssdk" }
 awssdk-apache-client = { module = "software.amazon.awssdk:apache-client", version.ref = "awssdk" }
+awssdk-arns = { module = "software.amazon.awssdk:arns", version.ref = "awssdk" }
 awssdk-auth = { module = "software.amazon.awssdk:auth", version.ref = "awssdk" }
 awssdk-aws-core = { module = "software.amazon.awssdk:aws-core", version.ref = "awssdk" }
 awssdk-aws-json-protocol = { module = "software.amazon.awssdk:aws-json-protocol", version.ref = "awssdk" }
 awssdk-aws-query-protocol = { module = "software.amazon.awssdk:aws-query-protocol", version.ref = "awssdk" }
 awssdk-aws-xml-protocol = { module = "software.amazon.awssdk:aws-xml-protocol", version.ref = "awssdk" }
+awssdk-checksums = { module = "software.amazon.awssdk:checksums", version.ref = "awssdk" }
+awssdk-checksums-spi = { module = "software.amazon.awssdk:checksums-spi", version.ref = "awssdk" }
+awssdk-crt-core = { module = "software.amazon.awssdk:crt-core", version.ref = "awssdk" }
+awssdk-endpoints-spi = { module = "software.amazon.awssdk:endpoints-spi", version.ref = "awssdk" }
+awssdk-http-auth = { module = "software.amazon.awssdk:http-auth", version.ref = "awssdk" }
+awssdk-http-auth-aws = { module = "software.amazon.awssdk:http-auth-aws", version.ref = "awssdk" }
+awssdk-http-auth-aws-eventstream = { module = "software.amazon.awssdk:http-auth-aws-eventstream", version.ref = "awssdk" }
+awssdk-http-auth-spi = { module = "software.amazon.awssdk:http-auth-spi", version.ref = "awssdk" }
 awssdk-http-client-spi = { module = "software.amazon.awssdk:http-client-spi", version.ref = "awssdk" }
+awssdk-identity-spi = { module = "software.amazon.awssdk:identity-spi", version.ref = "awssdk" }
+awssdk-json-utils = { module = "software.amazon.awssdk:json-utils", version.ref = "awssdk" }
 awssdk-kms = { module = "software.amazon.awssdk:kms", version.ref = "awssdk" }
 awssdk-metrics-spi = { module = "software.amazon.awssdk:metrics-spi", version.ref = "awssdk" }
-# AWS SDK module, but not on the awssdk ref: the vendored jar was 2.20.140
-awssdk-netty-nio-client = { module = "software.amazon.awssdk:netty-nio-client", version = "2.20.140" }
 awssdk-profiles = { module = "software.amazon.awssdk:profiles", version.ref = "awssdk" }
 awssdk-protocol-core = { module = "software.amazon.awssdk:protocol-core", version.ref = "awssdk" }
 awssdk-regions = { module = "software.amazon.awssdk:regions", version.ref = "awssdk" }
+awssdk-retries = { module = "software.amazon.awssdk:retries", version.ref = "awssdk" }
+awssdk-retries-spi = { module = "software.amazon.awssdk:retries-spi", version.ref = "awssdk" }
 awssdk-s3 = { module = "software.amazon.awssdk:s3", version.ref = "awssdk" }
 awssdk-sdk-core = { module = "software.amazon.awssdk:sdk-core", version.ref = "awssdk" }
 awssdk-sts = { module = "software.amazon.awssdk:sts", version.ref = "awssdk" }
+awssdk-third-party-jackson-core = { module = "software.amazon.awssdk:third-party-jackson-core", version.ref = "awssdk" }
 awssdk-utils = { module = "software.amazon.awssdk:utils", version.ref = "awssdk" }
+awssdk-utils-lite = { module = "software.amazon.awssdk:utils-lite", version.ref = "awssdk" }
 bcpkix-jdk18on = { module = "org.bouncycastle:bcpkix-jdk18on", version.ref = "bouncycastle" }
 bcprov-jdk18on = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 bcutil-jdk18on = { module = "org.bouncycastle:bcutil-jdk18on", version.ref = "bouncycastle" }
@@ -97,6 +114,7 @@ commons-pool2 = { module = "org.apache.commons:commons-pool2", version = "2.3" }
 commons-text = { module = "org.apache.commons:commons-text", version = "1.15.0" }
 commons-vfs2 = { module = "org.apache.commons:commons-vfs2", version = "2.10.0" }
 derby = { module = "org.apache.derby:derby", version.ref = "derby" }
+derbyshared = { module = "org.apache.derby:derbyshared", version.ref = "derby" }
 derbytools = { module = "org.apache.derby:derbytools", version.ref = "derby" }
 ecj = { module = "org.eclipse.jdt:ecj", version = "3.19.0" }
 error-prone-annotations = { module = "com.google.errorprone:error_prone_annotations", version = "2.3.4" }
@@ -126,18 +144,9 @@ httpclient = { module = "org.apache.httpcomponents:httpclient", version.ref = "h
 httpcore = { module = "org.apache.httpcomponents:httpcore", version = "4.4.13" }
 httpmime = { module = "org.apache.httpcomponents:httpmime", version.ref = "httpclient" }
 imagej = { module = "gov.nih.imagej:imagej", version = "1.42" }
-itext = { module = "com.lowagie:itext", version.ref = "itext" }
-itext-rtf = { module = "com.lowagie:itext-rtf", version.ref = "itext" }
 j2objc-annotations = { module = "com.google.j2objc:j2objc-annotations", version = "1.3" }
 jackson-annotations = { module = "com.fasterxml.jackson.core:jackson-annotations", version.ref = "jackson" }
-# off the jackson ref: bumped alone for a security fix. Realigning the
-# family is blocked: databind 2.16 and later remove APIs that
-# swagger-core 2.0.10 (BeanDescription.findJsonValueMethod,
-# AnnotationIntrospector.findPropertiesToIgnore) and AWS SDK 2.15.28
-# regions (PropertyNamingStrategy.PASCAL_CASE_TO_CAMEL_CASE) still call,
-# failing at runtime with NoSuchMethodError/NoSuchFieldError. Upgrade
-# those callers first.
-jackson-core = { module = "com.fasterxml.jackson.core:jackson-core", version = "2.18.8" }
+jackson-core = { module = "com.fasterxml.jackson.core:jackson-core", version.ref = "jackson" }
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
 jackson-dataformat-cbor = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-cbor", version.ref = "jackson" }
 jackson-dataformat-yaml = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml", version.ref = "jackson" }
@@ -153,7 +162,6 @@ javax-annotation-api = { module = "javax.annotation:javax.annotation-api", versi
 javax-json = { module = "org.glassfish:javax.json", version = "1.0.4" }
 javax-json-api = { module = "javax.json:javax.json-api", version = "1.0" }
 javax-persistence-api = { module = "javax.persistence:persistence-api", version = "1.0" }
-javax-servlet-api = { module = "javax.servlet:javax.servlet-api", version = "3.1.0" }
 javax-validation-api = { module = "javax.validation:validation-api", version = "1.1.0.Final" }
 javax-ws-rs-api = { module = "javax.ws.rs:javax.ws.rs-api", version = "2.0.1" }
 javax-xml-soap-api = { module = "javax.xml.soap:javax.xml.soap-api", version = "1.4.0" }
@@ -167,8 +175,6 @@ jcifs-ng = { module = "eu.agno3.jcifs:jcifs-ng", version = "2.1.10" }
 jdom2 = { module = "org.jdom:jdom2", version = "2.0.6.1" }
 jersey-client = { module = "org.glassfish.jersey.core:jersey-client", version.ref = "jersey" }
 jersey-common = { module = "org.glassfish.jersey.core:jersey-common", version.ref = "jersey" }
-jersey-container-jetty-http = { module = "org.glassfish.jersey.containers:jersey-container-jetty-http", version.ref = "jersey" }
-jersey-container-jetty-servlet = { module = "org.glassfish.jersey.containers:jersey-container-jetty-servlet", version.ref = "jersey" }
 jersey-container-servlet = { module = "org.glassfish.jersey.containers:jersey-container-servlet", version.ref = "jersey" }
 jersey-container-servlet-core = { module = "org.glassfish.jersey.containers:jersey-container-servlet-core", version.ref = "jersey" }
 jersey-guava = { module = "org.glassfish.jersey.bundles.repackaged:jersey-guava", version.ref = "jersey" }
@@ -176,21 +182,24 @@ jersey-media-jaxb = { module = "org.glassfish.jersey.media:jersey-media-jaxb", v
 jersey-media-multipart = { module = "org.glassfish.jersey.media:jersey-media-multipart", version.ref = "jersey" }
 jersey-proxy-client = { module = "org.glassfish.jersey.ext:jersey-proxy-client", version.ref = "jersey" }
 jersey-server = { module = "org.glassfish.jersey.core:jersey-server", version.ref = "jersey" }
-jetty-annotations = { module = "org.eclipse.jetty:jetty-annotations", version.ref = "jetty" }
-jetty-apache-jsp = { module = "org.eclipse.jetty:apache-jsp", version.ref = "jetty" }
-jetty-continuation = { module = "org.eclipse.jetty:jetty-continuation", version.ref = "jetty" }
+jetty-ee = { module = "org.eclipse.jetty:jetty-ee", version.ref = "jetty" }
+jetty-ee8-annotations = { module = "org.eclipse.jetty.ee8:jetty-ee8-annotations", version.ref = "jetty" }
+jetty-ee8-apache-jsp = { module = "org.eclipse.jetty.ee8:jetty-ee8-apache-jsp", version.ref = "jetty" }
+jetty-ee8-jndi = { module = "org.eclipse.jetty.ee8:jetty-ee8-jndi", version.ref = "jetty" }
+jetty-ee8-nested = { module = "org.eclipse.jetty.ee8:jetty-ee8-nested", version.ref = "jetty" }
+jetty-ee8-plus = { module = "org.eclipse.jetty.ee8:jetty-ee8-plus", version.ref = "jetty" }
+jetty-ee8-security = { module = "org.eclipse.jetty.ee8:jetty-ee8-security", version.ref = "jetty" }
+jetty-ee8-servlet = { module = "org.eclipse.jetty.ee8:jetty-ee8-servlet", version.ref = "jetty" }
+jetty-ee8-webapp = { module = "org.eclipse.jetty.ee8:jetty-ee8-webapp", version.ref = "jetty" }
 jetty-http = { module = "org.eclipse.jetty:jetty-http", version.ref = "jetty" }
 jetty-io = { module = "org.eclipse.jetty:jetty-io", version.ref = "jetty" }
 jetty-jndi = { module = "org.eclipse.jetty:jetty-jndi", version.ref = "jetty" }
 jetty-plus = { module = "org.eclipse.jetty:jetty-plus", version.ref = "jetty" }
-jetty-rewrite = { module = "org.eclipse.jetty:jetty-rewrite", version.ref = "jetty" }
-jetty-schemas = { module = "org.eclipse.jetty.toolchain:jetty-schemas", version = "3.1.2" }
 jetty-security = { module = "org.eclipse.jetty:jetty-security", version.ref = "jetty" }
 jetty-server = { module = "org.eclipse.jetty:jetty-server", version.ref = "jetty" }
-jetty-servlet = { module = "org.eclipse.jetty:jetty-servlet", version.ref = "jetty" }
+jetty-servlet-api = { module = "org.eclipse.jetty.toolchain:jetty-servlet-api", version = "4.0.6" }
+jetty-session = { module = "org.eclipse.jetty:jetty-session", version.ref = "jetty" }
 jetty-util = { module = "org.eclipse.jetty:jetty-util", version.ref = "jetty" }
-jetty-util-ajax = { module = "org.eclipse.jetty:jetty-util-ajax", version.ref = "jetty" }
-jetty-webapp = { module = "org.eclipse.jetty:jetty-webapp", version.ref = "jetty" }
 jetty-xml = { module = "org.eclipse.jetty:jetty-xml", version.ref = "jetty" }
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
@@ -210,25 +219,15 @@ miglayout-swing = { module = "com.miglayout:miglayout-swing", version.ref = "mig
 mimepull = { module = "org.jvnet.mimepull:mimepull", version = "1.9.7" }
 mockito-core = { module = "org.mockito:mockito-core", version.ref = "mockito" }
 mockito-inline = { module = "org.mockito:mockito-inline", version.ref = "mockito" }
-mssql-jdbc = { module = "com.microsoft.sqlserver:mssql-jdbc", version = "10.2.4.jre11" }
-mybatis = { module = "org.mybatis:mybatis", version = "3.1.1" }
+mssql-jdbc = { module = "com.microsoft.sqlserver:mssql-jdbc", version = "13.2.1.jre11" }
+mybatis = { module = "org.mybatis:mybatis", version = "3.5.6" }
 mysql-connector-j = { module = "com.mysql:mysql-connector-j", version = "8.4.0" }
-netty-buffer = { module = "io.netty:netty-buffer", version.ref = "netty" }
-netty-codec = { module = "io.netty:netty-codec", version.ref = "netty" }
-netty-codec-http = { module = "io.netty:netty-codec-http", version.ref = "netty" }
-netty-codec-http2 = { module = "io.netty:netty-codec-http2", version.ref = "netty" }
-netty-common = { module = "io.netty:netty-common", version.ref = "netty" }
-netty-handler = { module = "io.netty:netty-handler", version.ref = "netty" }
-netty-reactive-streams = { module = "com.typesafe.netty:netty-reactive-streams", version.ref = "netty-reactive-streams" }
-netty-reactive-streams-http = { module = "com.typesafe.netty:netty-reactive-streams-http", version.ref = "netty-reactive-streams" }
-netty-resolver = { module = "io.netty:netty-resolver", version.ref = "netty" }
-netty-transport = { module = "io.netty:netty-transport", version.ref = "netty" }
-netty-transport-native-epoll = { module = "io.netty:netty-transport-native-epoll", version.ref = "netty" }
-netty-transport-native-unix-common = { module = "io.netty:netty-transport-native-unix-common", version.ref = "netty" }
 objenesis = { module = "org.objenesis:objenesis", version = "2.5.1" }
 ojdbc8 = { module = "com.oracle.database.jdbc:ojdbc8", version = "12.2.0.1" }
 openhtmltopdf-core = { module = "com.openhtmltopdf:openhtmltopdf-core", version.ref = "openhtmltopdf" }
 openhtmltopdf-pdfbox = { module = "com.openhtmltopdf:openhtmltopdf-pdfbox", version.ref = "openhtmltopdf" }
+openpdf = { module = "com.github.librepdf:openpdf", version = "1.4.2" }
+openrtf = { module = "com.github.librepdf:openrtf", version = "1.2.1" }
 osgi-core = { module = "org.osgi:org.osgi.core", version = "4.2.0" }
 osgi-resource-locator = { module = "org.glassfish.hk2:osgi-resource-locator", version = "1.0.1" }
 oshi-core = { module = "com.github.oshi:oshi-core", version = "3.9.1" }
@@ -262,7 +261,7 @@ velocity-engine-core = { module = "org.apache.velocity:velocity-engine-core", ve
 velocity-tools-generic = { module = "org.apache.velocity.tools:velocity-tools-generic", version = "3.1" }
 xmpbox = { module = "org.apache.pdfbox:xmpbox", version.ref = "pdfbox" }
 xpp3 = { module = "xpp3:xpp3", version = "1.1.4c" }
-xstream = { module = "com.thoughtworks.xstream:xstream", version = "1.4.20" }
+xstream = { module = "com.thoughtworks.xstream:xstream", version = "1.4.21" }
 
 [bundles]
 client-main = [
@@ -404,6 +403,8 @@ donkey-main = [
     "commons-pool2",
     "commons-text",
     "derby",
+    "derbyshared",
+    "derbytools",
     "error-prone-annotations",
     "failureaccess",
     "guava",
@@ -452,11 +453,11 @@ server-extensions = [
     "flying-saucer-pdf",
     "fontbox",
     "imagej",
-    "itext",
-    "itext-rtf",
     "jcifs-ng",
     "openhtmltopdf-core",
     "openhtmltopdf-pdfbox",
+    "openpdf",
+    "openrtf",
     "pdfbox",
     "pdfbox-graphics2d",
     "xmpbox",
@@ -470,22 +471,36 @@ server-main = [
     "aws-eventstream",
     "awssdk-annotations",
     "awssdk-apache-client",
+    "awssdk-arns",
     "awssdk-auth",
     "awssdk-aws-core",
     "awssdk-aws-json-protocol",
     "awssdk-aws-query-protocol",
     "awssdk-aws-xml-protocol",
+    "awssdk-checksums",
+    "awssdk-checksums-spi",
+    "awssdk-crt-core",
+    "awssdk-endpoints-spi",
+    "awssdk-http-auth",
+    "awssdk-http-auth-aws",
+    "awssdk-http-auth-aws-eventstream",
+    "awssdk-http-auth-spi",
     "awssdk-http-client-spi",
+    "awssdk-identity-spi",
+    "awssdk-json-utils",
     "awssdk-kms",
     "awssdk-metrics-spi",
-    "awssdk-netty-nio-client",
     "awssdk-profiles",
     "awssdk-protocol-core",
     "awssdk-regions",
+    "awssdk-retries",
+    "awssdk-retries-spi",
     "awssdk-s3",
     "awssdk-sdk-core",
     "awssdk-sts",
+    "awssdk-third-party-jackson-core",
     "awssdk-utils",
+    "awssdk-utils-lite",
     "bcpkix-jdk18on",
     "bcprov-jdk18on",
     "bcutil-jdk18on",
@@ -514,6 +529,7 @@ server-main = [
     "commons-text",
     "commons-vfs2",
     "derby",
+    "derbyshared",
     "derbytools",
     "ecj",
     "fastinfoset",
@@ -552,7 +568,6 @@ server-main = [
     "javax-json",
     "javax-json-api",
     "javax-persistence-api",
-    "javax-servlet-api",
     "javax-validation-api",
     "javax-ws-rs-api",
     "javax-xml-soap-api",
@@ -565,8 +580,6 @@ server-main = [
     "jdom2",
     "jersey-client",
     "jersey-common",
-    "jersey-container-jetty-http",
-    "jersey-container-jetty-servlet",
     "jersey-container-servlet",
     "jersey-container-servlet-core",
     "jersey-guava",
@@ -574,21 +587,24 @@ server-main = [
     "jersey-media-multipart",
     "jersey-proxy-client",
     "jersey-server",
-    "jetty-annotations",
-    "jetty-apache-jsp",
-    "jetty-continuation",
+    "jetty-ee",
+    "jetty-ee8-annotations",
+    "jetty-ee8-apache-jsp",
+    "jetty-ee8-jndi",
+    "jetty-ee8-nested",
+    "jetty-ee8-plus",
+    "jetty-ee8-security",
+    "jetty-ee8-servlet",
+    "jetty-ee8-webapp",
     "jetty-http",
     "jetty-io",
     "jetty-jndi",
     "jetty-plus",
-    "jetty-rewrite",
-    "jetty-schemas",
     "jetty-security",
     "jetty-server",
-    "jetty-servlet",
+    "jetty-servlet-api",
+    "jetty-session",
     "jetty-util",
-    "jetty-util-ajax",
-    "jetty-webapp",
     "jetty-xml",
     "jna",
     "jna-platform",
@@ -602,17 +618,6 @@ server-main = [
     "mssql-jdbc",
     "mybatis",
     "mysql-connector-j",
-    "netty-buffer",
-    "netty-codec",
-    "netty-codec-http",
-    "netty-codec-http2",
-    "netty-common",
-    "netty-handler",
-    "netty-reactive-streams",
-    "netty-reactive-streams-http",
-    "netty-resolver",
-    "netty-transport",
-    "netty-transport-native-unix-common",
     "ojdbc8",
     "osgi-core",
     "osgi-resource-locator",

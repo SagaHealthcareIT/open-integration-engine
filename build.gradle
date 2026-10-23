@@ -157,8 +157,12 @@ subprojects {
     }
 
     java {
+        // OpenShare: build on JDK 21. Derby 10.17's derbytools jar is Java 19
+        // bytecode, which a JDK 17 javac cannot read, and the engine's
+        // runtime is Java 21. The shipped classes still target Java 17
+        // (options.release below), as the fork's Ant build did.
         toolchain {
-            languageVersion = JavaLanguageVersion.of(17)
+            languageVersion = JavaLanguageVersion.of(21)
         }
     }
 
@@ -186,10 +190,16 @@ subprojects {
     compileJava {
         options.sourcepath = sourceSets.main.java.sourceDirectories
         options.annotationProcessorPath = configurations.compileClasspath
+        options.release = 17
     }
+    // Tests run on the JDK 21 toolchain. --release cannot be combined with
+    // the --add-exports flags some test compiles need, so they use
+    // -source/-target 17 instead (as the Ant test compile did).
     compileTestJava {
         options.sourcepath = sourceSets.test.java.sourceDirectories
         options.annotationProcessorPath = configurations.testCompileClasspath
+        sourceCompatibility = '17'
+        targetCompatibility = '17'
     }
 
     // Legacy modules assemble their published archives explicitly. 
@@ -275,7 +285,7 @@ subprojects {
 
     if (rootProject.coverageEnabled) {
         apply plugin: 'jacoco'
-        jacoco { toolVersion = '0.8.8' }
+        jacoco { toolVersion = '0.8.12' } // OpenShare: 0.8.11+ reads the JDK 21 toolchain's classes
         tasks.withType(Test).configureEach { finalizedBy tasks.named('jacocoTestReport') }
         tasks.named('jacocoTestReport') {
             reports.xml.required = true
