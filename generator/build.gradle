@@ -34,6 +34,8 @@ def compileVocab = tasks.register('compileVocab', JavaCompile) {
     destinationDirectory = file('vocab/classes')
     classpath = sourceSets.main.runtimeClasspath
     options.encoding = 'UTF-8'
+    // the jar ships in server-lib and client-lib; match the main compiles
+    options.release = 17
     dependsOn generateVocabSource
 }
 
