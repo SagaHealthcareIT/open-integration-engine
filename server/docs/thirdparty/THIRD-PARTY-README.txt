@@ -9,14 +9,14 @@ The following are distributed under the terms of the Apache License version 2.0
 
 	Amazon Ion Java (https://github.com/amzn/ion-java)
 	Apache Commons [incl. CLI]
-	Apache Derby 10.10.2.0
+	Apache Derby 10.17.1.0
 	Apache Geronimo (only components needed for the JMS API)
 	Apache HttpComponents 4.x [incl. CLI]
 	Apache Log4j 2.26.1 [incl. CLI]
 	Apache PDFBox 2.0.24
 	Apache Standard Taglib 1.2.5
-	Apache Tomcat Jasper JSP Engine 8.5.70
-	Apache Tomcat Jasper Expression Language Impl 8.5.70
+	Apache Tomcat Jasper JSP Engine 9.0.102
+	Apache Tomcat Jasper Expression Language Impl 9.0.102
 	Apache Velocity Engine 2.3 [incl. CLI]
 	Apache Velocity Tools 3.1 [incl. CLI]
 	AWS SDK v2 for Java (https://github.com/aws/aws-sdk-java-v2)
@@ -31,16 +31,15 @@ The following are distributed under the terms of the Apache License version 2.0
 	J2ObjC Annotations 1.3 (https://github.com/google/j2objc/)
 	Jackson Project [incl. CLI] (https://github.com/FasterXML/jackson)
 	Java Native Access (JNA) 4.5.2 (https://github.com/java-native-access/jna)
-	Jetty 9.4.57
+	Jetty 12.0.38
 	Joda-Time 2.9.9
 	JSR305 Annotations for Findbugs 3.0.2 (http://findbugs.sourceforge.net/)
-	MyBatis 3.1.1
-	Netty 4.1.137
+	MyBatis 3.5.6
 	Not-Going-To-Be-Commons-SSL 0.3.18
 	Quartz Scheduler 2.3.2
 	SQLite JDBC Driver 3.43.2.1 (https://github.com/xerial/sqlite-jdbc)
 	StAXON 1.3 [incl. CLI] (https://github.com/beckchr/staxon)
-	Swagger Core 2.0.10 [incl. CLI] (https://github.com/swagger-api/swagger-core)
+	Swagger Core 2.2.31 [incl. CLI] (https://github.com/swagger-api/swagger-core)
 	Swagger UI 2.2.10 (http://swagger.io/swagger-ui/)
 	webdavclient4j 0.92 (http://sourceforge.net/projects/webdavclient4j/)
 	Zip4j 1.3.3 (http://www.lingala.net/zip4j/)
@@ -74,10 +73,6 @@ terms.
 	HAPI 2.3 (source code can be downloaded at: 
 	https://github.com/hapifhir/hapi-hl7v2)
 
-	iText, a free Java-PDF library version 2.1.7 (source code can be downloaded 
-	at:
-	https://repo1.maven.org/maven2/com/lowagie/itext/2.1.7/itext-2.1.7-sources.jar)
-
 	Javassist 3.26.0 [incl. CLI] (source code can be downloaded at:
 	https://github.com/jboss-javassist/javassist/tree/rel_3_26_0_ga)
 
@@ -95,6 +90,14 @@ terms.
 	the debugger easier to implement. The modified source is included in the
 	Open Integration Engine source code under
 	server/src/main/java/org/mozilla/javascript/.
+
+	OpenPDF 1.4.2 (source code can be downloaded at:
+	https://github.com/LibrePDF/OpenPDF)
+	Also available under the LGPL version 2.1 (see LGPL-2.1.txt).
+
+	OpenRTF 1.2.1 (source code can be downloaded at:
+	https://github.com/LibrePDF/OpenRTF)
+	Also available under the LGPL version 2.1 (see LGPL-2.1.txt).
 
 
 --------------------------------------------------------------------------------
@@ -184,10 +187,7 @@ Distribution License version 1.1 (see CDDL-1.1.txt):
 The following are distributed under the terms of the Common Development and
 Distribution License version 1.0 (see CDDL-1.0.txt):
 
-	Java Servlet API 3.1.0 (source code can be downloaded from:
-	https://repo1.maven.org/maven2/javax/servlet/javax.servlet-api/3.1.0/javax.servlet-api-3.1.0-sources.jar)
-	
-	Jetty Apache JSP Implementation 9.4.57 (source code can be downloaded from:
+	Jetty Apache JSP Implementation 9.0.102 (source code can be downloaded from:
 	http://download.eclipse.org/jetty/)
 
 	Swinglabs Wizard (source code can be downloaded from:
@@ -211,6 +211,10 @@ version 2.0 (see EPL-2.0.txt):
 
 	Eclipse Compiler For Java 3.19.0 (source code can be downloaded from:
 	https://repo1.maven.org/maven2/org/eclipse/jdt/ecj/3.19.0/ecj-3.19.0-sources.jar)
+
+	Jetty Servlet API 4.0.6 (source code can be downloaded from:
+	https://github.com/jetty/jetty.toolchain)
+	Also available under the Apache License version 2.0 (see APACHE-LICENSE-2.0.txt).
 
 	Jakarta Mail API 1.6.8 (source code can be downloaded from:
 	https://github.com/eclipse-ee4j/mail/tree/1.6.8)
@@ -717,7 +721,7 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 The license below pertains to OGNL (Object-Graph Navigation Language), which is
-included within the MyBatis 3.1.1 library.
+included within the MyBatis 3.5.6 library.
 
 =================== Beginning of License ===================
 
@@ -795,7 +799,7 @@ POSSIBILITY OF SUCH DAMAGE.
 --------------------------------------------------------------------------------
 
 
-The license below pertains to XStream version 1.4.20 [incl. CLI].
+The license below pertains to XStream version 1.4.21 [incl. CLI].
 
 =================== Beginning of License ===================
 
