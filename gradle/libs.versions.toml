@@ -12,23 +12,25 @@
 # OpenShare Engine: this catalog carries the openshare fork's dependency
 # set on top of upstream's: Jetty 12.0.38 (EE8 environment) in place of
 # 9.4, AWS SDK v2 2.55.8 without the netty async client, Derby 10.17.1.0
-# (+derbyshared), jackson 2.18.9 across all modules, swagger 2.2.31,
-# BouncyCastle 1.84, xstream 1.4.21, mybatis 3.5.6, mssql-jdbc 13.2.1 and
+# (+derbyshared), jackson 2.18.11 across all modules, swagger 2.2.31,
+# BouncyCastle 1.85, xstream 1.4.21, mybatis 3.5.6, mssql-jdbc 13.2.1 and
 # OpenPDF/OpenRTF in place of iText 2.1.7. Each coordinate was SHA-1
-# matched to the jar the openshare 4.6.0-x branch vendored.
+# matched to the jar the openshare 4.6.0-x branch vendored, except jackson
+# and BouncyCastle: 4.6.0-8 shipped 2.18.9 and 1.84, which have advisories
+# fixed in 2.18.11 and 1.85.
 
 [versions]
 # Shared by artifacts released together; bump the whole family at once.
 asm = "9.6"
 awssdk = "2.55.8"
-bouncycastle = "1.84"
+bouncycastle = "1.85"
 byte-buddy = "1.14.13"
 derby = "10.17.1.0"
 flying-saucer = "9.0.1"
 hapi = "2.3"
 hk2 = "2.4.0-b31"
 httpclient = "4.5.13"
-jackson = "2.18.9"
+jackson = "2.18.11"
 jasper = "9.0.102"
 jaxb-ri = "2.4.0-b180725.0644"
 jaxws-ri = "2.3.0.2"
