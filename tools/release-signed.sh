@@ -42,18 +42,17 @@
 #   INSTALL4JC          path to install4jc (default: ~/opt/install4j13.1.1/bin/install4jc). It
 #                       must be at least the install4j version that saved the config
 #   ALLOW_OLDER_INSTALL4J=1  build with an older install4jc anyway
-#   RELEASE_VERSION     the version to ship, e.g. RELEASE_VERSION=4.7.0-1. Required
-#                       with PUBLISH_RELEASE=1; a dev build defaults to the
-#                       upstream tag's plain X.Y.Z
+#   RELEASE_VERSION     the version to ship, e.g. RELEASE_VERSION=4.7.0-1. A dev build
+#                       defaults to the upstream tag's plain X.Y.Z, which
+#                       tools/upload-release.sh refuses to upload
 #   SKIP_ENGINE_BUILD=1 reuse an existing server/setup (skip the Gradle build)
 #   SKIP_TESTS=1        build without running the unit tests (-PdisableTests=true)
-#   PUBLISH_RELEASE=1   after signing, attach media + .sha256 + provenance to a
-#                       GitHub release (tag openshare-v<engine-version>) that the
-#                       publish-engine-to-s3{,-prod}.yml and
-#                       publish-engine-to-github-public.yml workflows pull from
-#   ENGINE_REPO         release repo (default: SagaHealthcareIT/open-integration-engine-internal)
-#   RELEASE_TAG         override the release tag (default: openshare-v<engine-version>)
-#   RELEASE_NOTES       path to a release-notes markdown file (default: a one-line stub)
+#
+# This script never uploads. It leaves the signed media, a .sha256 each and the
+# provenance marker in server/build and prints the tools/upload-release.sh
+# command, which attaches them to a GitHub release as a separate step (no token
+# needed): the upload takes hours on a slow link, and the media are often tested
+# first. Upload before the next build, which empties server/build.
 #
 set -euo pipefail
 
@@ -72,20 +71,13 @@ OPENSC="/usr/lib64/opensc-pkcs11.so"
 # those ids once it is.
 MEDIA_IDS="${1:-${MEDIA_IDS:-27,119,42,121,136,125,44,153,167}}"
 
-# GitHub-release handoff (opt-in). When PUBLISH_RELEASE=1, the signed media +
-# their .sha256 sidecars + the provenance marker are attached to a GitHub
-# release on ENGINE_REPO under an `openshare-v<engine-version>` tag. The
-# publish-engine-to-s3{,-prod}.yml workflows then pull from that release. The
-# tag is namespaced so it never collides with the upstream mirror's
-# `X.Y.Z-<sha>` prereleases in the same repo. Off by default so a plain build
-# (dev iteration) never creates a release.
-PUBLISH_RELEASE="${PUBLISH_RELEASE:-0}"
-ENGINE_REPO="${ENGINE_REPO:-SagaHealthcareIT/open-integration-engine-internal}"
-RELEASE_TAG="${RELEASE_TAG:-}"   # default: openshare-v$RELEASE_VERSION
-
 die() { echo "ERROR: $*" >&2; exit 1; }
 
 # --- Preflight -------------------------------------------------------------
+# PUBLISH_RELEASE=1 used to upload at the end of the build. Fail before the
+# build rather than finish without the upload that was asked for.
+[ -z "${PUBLISH_RELEASE:-}" ] \
+  || die "PUBLISH_RELEASE is gone: this script no longer uploads. Unset it, build, then run the tools/upload-release.sh command it prints"
 [ -x "$INSTALL4JC" ] || die "install4jc not found/executable: $INSTALL4JC (set INSTALL4JC=)"
 [ -f "$CONFIG" ]     || die "install4j config missing: $CONFIG"
 # The config records the install4j version that last saved it. An older install4jc
@@ -119,10 +111,14 @@ OPENSHARE_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD)"
 # from, and the public GitHub publisher checks the public tag against it. That
 # only holds if the tree has no uncommitted changes and no untracked files (an
 # untracked source, conf or html file is built into the media just like a
-# committed one; build output is gitignored). Dev builds may be dirty.
-if [ "$PUBLISH_RELEASE" = 1 ] && [ -n "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=all)" ]; then
-  die "uncommitted changes or untracked files — a published release must be built from a clean commit:
-$(git -C "$REPO_ROOT" status --short --untracked-files=all)"
+# committed one; build output is gitignored). Dev builds may be dirty: the
+# provenance marker records worktree_clean, and tools/upload-release.sh refuses
+# a dirty build.
+WORKTREE_CLEAN=true
+if [ -n "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=all)" ]; then
+  WORKTREE_CLEAN=false
+  echo "WARNING: uncommitted changes or untracked files; this build can't be uploaded as a release:" >&2
+  git -C "$REPO_ROOT" status --short --untracked-files=all >&2
 fi
 # Gradle puts every jar under a module's lib/ directory on the classpath and
 # copies server/lib into server/setup, so a stray jar there (for example one
@@ -135,8 +131,8 @@ STRAY_LIBS="$(git -C "$REPO_ROOT" status --porcelain --ignored --untracked-files
   | grep -vE '^!! (client/lib/(donkey-model|mirth-client-core|mirth-crypto|mirth-vocab|[^/]+-shared)\.jar|command/lib/(donkey-model|mirth-client-core|mirth-crypto)\.jar|server/lib/donkey/.*)$' || true)"
 [ -z "$STRAY_LIBS" ] || die "files under a lib/ directory that are not committed as is would be built into the media:
 $STRAY_LIBS"
-if [ "$PUBLISH_RELEASE" = 1 ] && [ -z "${RELEASE_VERSION:-}" ]; then
-  die "set RELEASE_VERSION (e.g. RELEASE_VERSION=${UPSTREAM_TAG#v}-1) for a published release"
+if [ -z "${RELEASE_VERSION:-}" ]; then
+  echo "WARNING: no RELEASE_VERSION; this is a dev build of ${UPSTREAM_TAG#v} and can't be uploaded as a release (set e.g. RELEASE_VERSION=${UPSTREAM_TAG#v}-1)" >&2
 fi
 RELEASE_VERSION="${RELEASE_VERSION:-${UPSTREAM_TAG#v}}"
 
@@ -246,6 +242,7 @@ MARKER="$BUILD_OUT/BUNDLED_PLUGIN.txt"
   echo "upstream_tag=$UPSTREAM_TAG"
   echo "upstream_commit=$UPSTREAM_COMMIT"
   echo "openshare_commit=$OPENSHARE_COMMIT"
+  echo "worktree_clean=$WORKTREE_CLEAN"
   echo "plugin_sidecar=true"
   echo "media_ids=$MEDIA_IDS"
   echo "built_utc=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -268,45 +265,14 @@ for m in "${MEDIA_FILES[@]}"; do
   ( cd "$(dirname "$m")" && sha256sum "$(basename "$m")" > "$(basename "$m").sha256" )
 done
 
-# --- GitHub-release handoff (opt-in) --------------------------------------
-if [ "$PUBLISH_RELEASE" = 1 ]; then
-  command -v gh >/dev/null 2>&1 || die "'gh' (GitHub CLI) required for PUBLISH_RELEASE=1"
-  TAG="${RELEASE_TAG:-openshare-v${RELEASE_VERSION}}"
-  case "$TAG" in
-    openshare-v[0-9]*) ;;
-    *) die "RELEASE_TAG must be 'openshare-v<semver>' (got '$TAG')";;
-  esac
-
-  UPLOADS=( "${MEDIA_FILES[@]}" )
-  for m in "${MEDIA_FILES[@]}"; do UPLOADS+=( "${m}.sha256" ); done
-  UPLOADS+=( "$MARKER" )   # BUNDLED_PLUGIN.txt provenance
-
-  echo "==> Publishing GitHub release $TAG on $ENGINE_REPO"
-  if gh release view "$TAG" --repo "$ENGINE_REPO" >/dev/null 2>&1; then
-    echo "    release exists — uploading assets with --clobber"
-    gh release upload "$TAG" --repo "$ENGINE_REPO" --clobber "${UPLOADS[@]}"
-  else
-    # --latest=false so an OpenShare release never steals the "Latest" badge
-    # from the upstream-mirror tooling in this shared repo. Promote by hand if
-    # desired. Notes come from RELEASE_NOTES (file path) or a stub.
-    NOTES_ARG=( --notes "OpenShare Engine ${RELEASE_VERSION} — Open Integration Engine ${UPSTREAM_TAG} (${UPSTREAM_COMMIT:0:9}) with OpenShare branding. EV-signed installers; admin-console plugin delivered as a download-time sidecar." )
-    [ -n "${RELEASE_NOTES:-}" ] && [ -f "${RELEASE_NOTES}" ] && NOTES_ARG=( --notes-file "$RELEASE_NOTES" )
-    # --target: if the tag doesn't exist yet, create it at the commit these
-    # media were built from, not at the tip of the default branch. (That
-    # commit must already be pushed to origin.)
-    gh release create "$TAG" --repo "$ENGINE_REPO" \
-      --target "$OPENSHARE_COMMIT" \
-      --title "OpenShare Engine ${RELEASE_VERSION}" \
-      --latest=false "${NOTES_ARG[@]}" \
-      "${UPLOADS[@]}"
-  fi
-  echo "==> Release $TAG published. Next: dispatch publish-engine-to-s3.yml (dev)"
-  echo "    then, after dev validation, publish-engine-to-s3-prod.yml (prod) with tag=$TAG"
-  echo "    and publish-engine-to-github-public.yml (public download, no plugin). Make the"
-  echo "    source public first (the release may have created the tag on origin only):"
-  echo "      git fetch origin tag $TAG && git push saga-public refs/tags/$TAG"
-fi
-
 echo
-echo "==> Done. Signed artifacts in $BUILD_OUT:"
-ls -1sh "$BUILD_OUT"/openshare_*.{exe,sh,dmg} 2>/dev/null || true
+echo "==> Done. Signed, not uploaded. Media in $BUILD_OUT:"
+ls -1sh "${MEDIA_FILES[@]}"
+echo
+if [ "$WORKTREE_CLEAN" = true ] && [ "$RELEASE_VERSION" != "${UPSTREAM_TAG#v}" ]; then
+  echo "To upload them to the GitHub release openshare-v$RELEASE_VERSION (no token needed;"
+  echo "re-run to resume; upload before the next build, which empties server/build):"
+  printf '   %q\n' "$REPO_ROOT/tools/upload-release.sh"
+else
+  echo "This build can't be uploaded as a release (dev version or uncommitted changes; see the warnings above)."
+fi
