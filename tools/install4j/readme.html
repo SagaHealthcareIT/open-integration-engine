@@ -7,8 +7,7 @@
     Mozilla Public License 2.0. The complete source code for this release, including our
     modifications, is published at
     <a href="https://github.com/SagaHealthcareIT/open-integration-engine">github.com/SagaHealthcareIT/open-integration-engine</a>
-    (tagged <code>openshare-v&lt;version&gt;</code> per release; the 4.7.0 releases come from
-    branch <code>openshare-4.7</code>).
+    (branch <code>openshare</code>, tagged <code>openshare-v&lt;version&gt;</code> per release).
   </p>
   <p>
     This installer sets up a fully functional version of the engine with minimal user input,
@@ -19,6 +18,12 @@
   <ul>
     <li>A native service is installed and started right away, and is configured to start automatically at boot.</li>
     <li>The OpenShare admin-console plugin shipped alongside this installer is installed automatically — keep it in the same folder as the installer.</li>
+    <li>
+      A new installation has one user, <code>admin</code>. If you downloaded the engine from the OpenShare console,
+      its password is the one the console showed you. Otherwise the engine generates a password on its first start
+      and writes it once to <code>logs/mirth.log</code> (look for "Initial admin password").
+      An upgrade keeps your existing users and passwords.
+    </li>
     <li>
       A new installation uses the default configuration files in the conf directory;
       the installer does not prompt for customization.

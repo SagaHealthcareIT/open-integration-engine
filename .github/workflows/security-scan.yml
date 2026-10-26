@@ -13,7 +13,7 @@ name: Security scan
 on:
   pull_request:
   push:
-    branches: [openshare, 'openshare-*', 'release/*']
+    branches: [openshare, 'release/*']
   workflow_dispatch:
 
 permissions:

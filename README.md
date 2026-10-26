@@ -8,7 +8,7 @@
 ---
 ## OpenShare Engine (this branch)
 
-The `openshare` release branches (`openshare-4.7` for the 4.7.0 line, `openshare` for 4.6.0-x) are **OpenShare Engine**, [Saga IT](https://saga-it.com)'s build of the Open Integration Engine: upstream OIE plus OpenShare branding, signed Windows and Linux installers, a Java 21 runtime, and fixes that have not yet landed upstream. It is the source for every OpenShare Engine binary we distribute, and it is published here under the same [MPL 2.0](LICENSE) as upstream so that anyone receiving those binaries can obtain and modify the corresponding source.
+The `openshare` branch (the 4.7.0 line; 4.6.0-x continues on `release/4.6`) is **OpenShare Engine**, [Saga IT](https://saga-it.com)'s build of the Open Integration Engine: upstream OIE plus OpenShare branding, signed Windows and Linux installers, a Java 21 runtime, and fixes that have not yet landed upstream. It is the source for every OpenShare Engine binary we distribute, and it is published here under the same [MPL 2.0](LICENSE) as upstream so that anyone receiving those binaries can obtain and modify the corresponding source.
 
 - **Releases:** each build is tagged `openshare-v<upstream version>-<n>` (for example `openshare-v4.7.0-1`). The tag names the exact commit a set of installers and container images was built from; the media's provenance file records the same commit.
 - **Binaries:** installers come from the engine download in the [OpenShare console](https://openshare.health); container images are on Docker Hub as [`sagait/openshare-engine`](https://hub.docker.com/r/sagait/openshare-engine).

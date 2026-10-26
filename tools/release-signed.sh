@@ -23,7 +23,7 @@
 # pluginSidecar flag that tells the API to include the plugin sidecar.
 #
 # Versioning tracks upstream releases. Our release branches (`openshare` for
-# 4.6.0-x, `openshare-4.7` for 4.7.0-x) are BASED ON an upstream release tag
+# 4.7.0-x, `release/4.6` for 4.6.0-x) are BASED ON an upstream release tag
 # (vX.Y.Z[-rcN]) + our commits — never on upstream main — so the nearest
 # reachable v-tag names this build. The release version (e.g. 4.7.0-1) is
 # stamped into the media via `install4jc --release`, mirroring upstream's own
@@ -39,7 +39,9 @@
 #
 # Env overrides:
 #   MEDIA_IDS           install4j media ids (default: Windows + Linux, no-JRE + with-JRE)
-#   INSTALL4JC          path to install4jc (default: ~/opt/install4j13.0/bin/install4jc)
+#   INSTALL4JC          path to install4jc (default: ~/opt/install4j13.1/bin/install4jc). It
+#                       must be at least the install4j version that saved the config
+#   ALLOW_OLDER_INSTALL4J=1  build with an older install4jc anyway
 #   RELEASE_VERSION     the version to ship, e.g. RELEASE_VERSION=4.7.0-1. Required
 #                       with PUBLISH_RELEASE=1; a dev build defaults to the
 #                       upstream tag's plain X.Y.Z
@@ -56,7 +58,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-INSTALL4JC="${INSTALL4JC:-$HOME/opt/install4j13.0/bin/install4jc}"
+INSTALL4JC="${INSTALL4JC:-$HOME/opt/install4j13.1/bin/install4jc}"
 CONFIG="$REPO_ROOT/tools/install4j/oie-installer-config.install4j"
 SETUP="$REPO_ROOT/server/setup"
 BUILD_OUT="$REPO_ROOT/server/build"
@@ -86,6 +88,19 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 # --- Preflight -------------------------------------------------------------
 [ -x "$INSTALL4JC" ] || die "install4jc not found/executable: $INSTALL4JC (set INSTALL4JC=)"
 [ -f "$CONFIG" ]     || die "install4j config missing: $CONFIG"
+# The config records the install4j version that last saved it. An older install4jc
+# still builds it, with a warning, but may not understand what the newer version
+# wrote, and signing and JRE bundling were never tested that way. Compare
+# major.minor only: install4jc 13.0 (build 13007) reports itself as plain "13.0".
+CONFIG_I4J_VER="$(grep -m1 -oE '<install4j version="[0-9]+\.[0-9]+' "$CONFIG" | grep -oE '[0-9]+\.[0-9]+$' || true)"
+I4JC_VER="$("$INSTALL4JC" --version 2>/dev/null | sed -nE 's/^install4j version ([0-9]+\.[0-9]+).*/\1/p' | head -1 || true)"
+[ -n "$CONFIG_I4J_VER" ] && [ -n "$I4JC_VER" ] \
+  || die "cannot read the install4j versions (config: ${CONFIG_I4J_VER:-?}, install4jc: ${I4JC_VER:-?})"
+if [ "$(printf '%s\n' "$CONFIG_I4J_VER" "$I4JC_VER" | sort -V | head -1)" != "$CONFIG_I4J_VER" ]; then
+  [ "${ALLOW_OLDER_INSTALL4J:-0}" = 1 ] \
+    || die "install4jc is $I4JC_VER, but the install4j config was saved by $CONFIG_I4J_VER: install $CONFIG_I4J_VER or newer and set INSTALL4JC=, or set ALLOW_OLDER_INSTALL4J=1"
+  echo "WARNING: building with install4jc $I4JC_VER; the config was saved by $CONFIG_I4J_VER (ALLOW_OLDER_INSTALL4J=1)" >&2
+fi
 [ -x "$REPO_ROOT/gradlew" ] || die "Gradle wrapper missing: $REPO_ROOT/gradlew"
 for t in java jarsigner keytool jar pkcs11-tool openssl curl python3; do
   command -v "$t" >/dev/null 2>&1 || die "'$t' not on PATH"
