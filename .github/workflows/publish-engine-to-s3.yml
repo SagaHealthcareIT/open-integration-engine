@@ -3,9 +3,10 @@ name: Publish Engine to S3
 # DEV publisher for the branded OpenShare Engine installers.
 #
 # Triggered manually after a maintainer has built + EV-signed the installer
-# media on the signing machine (eToken inserted) and attached them to a
-# GitHub release with tools/release-signed.sh. CI cannot build (install4j is
-# licensed) or sign (the Sectigo eToken is hardware) the engine, so — unlike
+# media on the signing machine (eToken inserted) with tools/release-signed.sh
+# and attached them to a GitHub release with tools/upload-release.sh, which
+# publishes the release only once every asset is on it. CI cannot build
+# (install4j is licensed) or sign (the Sectigo eToken is hardware) the engine, so — unlike
 # a normal app — there is NO CI build step and NO fast dev channel. This
 # workflow only moves the already-signed release assets into the dev bucket.
 #

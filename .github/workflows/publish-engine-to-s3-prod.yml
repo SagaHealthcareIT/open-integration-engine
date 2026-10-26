@@ -14,7 +14,8 @@ name: Publish Engine to S3 (prod)
 # As with dev, CI cannot build (install4j licensed) or sign (Sectigo eToken)
 # the engine — a maintainer must have already attached the EV-signed
 # openshare_* media (+ .sha256 sidecars) to the release for the given tag with
-# tools/release-signed.sh. Prod reuses the SAME signed media as dev; only the
+# tools/upload-release.sh (after tools/release-signed.sh built and signed them).
+# Prod reuses the SAME signed media as dev; only the
 # target bucket/role differ.
 #
 # A prod publish is a prod change: the run must name a change-control ticket,
