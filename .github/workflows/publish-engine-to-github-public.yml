@@ -16,7 +16,8 @@ name: Publish Engine to GitHub (public)
 # (install4j is licensed) or sign (the Sectigo eToken is hardware) the engine,
 # so a maintainer must already have attached the EV-signed openshare_* media +
 # .sha256 sidecars to the private release for the tag with
-# tools/release-signed.sh. Uploading from a runner also avoids pushing ~2.5 GB
+# tools/upload-release.sh (after tools/release-signed.sh built and signed them).
+# Uploading from a runner also avoids pushing ~2.5 GB
 # from the signing machine a second time.
 #
 # The media are only published once their source is public: the tag must

@@ -76,7 +76,7 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 # --- Preflight -------------------------------------------------------------
 # PUBLISH_RELEASE=1 used to upload at the end of the build. Fail before the
 # build rather than finish without the upload that was asked for.
-[ -z "${PUBLISH_RELEASE:-}" ] \
+[ "${PUBLISH_RELEASE:-0}" = 0 ] \
   || die "PUBLISH_RELEASE is gone: this script no longer uploads. Unset it, build, then run the tools/upload-release.sh command it prints"
 [ -x "$INSTALL4JC" ] || die "install4jc not found/executable: $INSTALL4JC (set INSTALL4JC=)"
 [ -f "$CONFIG" ]     || die "install4j config missing: $CONFIG"
