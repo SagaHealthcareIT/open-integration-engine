@@ -4,7 +4,7 @@
 # installers on the Linux signing machine (eToken inserted).
 #
 # It orchestrates the whole pipeline so you don't run the steps by hand:
-#   1. build the branded engine (Ant, unsigned jars)
+#   1. build the branded engine (Gradle, unsigned jars)
 #   2. EV-sign the engine client jars via OpenSC/PKCS#11   (tools/sign-engine-jars.sh)
 #   3. build + Authenticode-sign the installers/launchers  (install4jc)
 #   4. verify a built Windows installer's signature
@@ -22,24 +22,31 @@
 # plugin_sidecar=true, which the publish workflows turn into the manifest's
 # pluginSidecar flag that tells the API to include the plugin sidecar.
 #
-# Versioning tracks upstream releases. The `openshare` branch is BASED ON an
-# upstream release tag (vX.Y.Z[-rcN]) + our commits — never on upstream main —
-# so the nearest reachable v-tag names this build. That version (e.g.
-# 4.6.0-rc1) is stamped into the media via `install4jc --release`, mirroring
-# upstream's own process: their in-repo version strings stay plain X.Y.Z too
-# (which is also what the engine reports at runtime, so the plugin's exact
-# mirthVersion gating is unaffected). Our release tag is openshare-v<version>,
-# and the provenance marker records the upstream tag + commit it corresponds to.
+# Versioning tracks upstream releases. Our release branches (`openshare` for
+# 4.7.0-x, `release/4.6` for 4.6.0-x) are BASED ON an upstream release tag
+# (vX.Y.Z[-rcN]) + our commits — never on upstream main — so the nearest
+# reachable v-tag names this build. The release version (e.g. 4.7.0-1) is
+# stamped into the media via `install4jc --release`, mirroring upstream's own
+# process: their in-repo version strings stay plain X.Y.Z too (which is also
+# what the engine reports at runtime, so the plugin's exact mirthVersion gating
+# is unaffected). Never pass Gradle's -Pversion: it changes the version the
+# engine reports and breaks that gating. Our release tag is
+# openshare-v<version>, and the provenance marker records the upstream tag +
+# commit it corresponds to.
 #
 # Usage:
 #   tools/release-signed.sh [media-ids]
 #
 # Env overrides:
 #   MEDIA_IDS           install4j media ids (default: Windows + Linux, no-JRE + with-JRE)
-#   INSTALL4JC          path to install4jc (default: ~/opt/install4j13.0/bin/install4jc)
-#   RELEASE_VERSION     override the derived version — use for a re-spin on the
-#                       same upstream release, e.g. RELEASE_VERSION=4.6.0-rc1.2
-#   SKIP_ENGINE_BUILD=1 reuse an existing server/setup (skip the Ant build)
+#   INSTALL4JC          path to install4jc (default: ~/opt/install4j13.1.1/bin/install4jc). It
+#                       must be at least the install4j version that saved the config
+#   ALLOW_OLDER_INSTALL4J=1  build with an older install4jc anyway
+#   RELEASE_VERSION     the version to ship, e.g. RELEASE_VERSION=4.7.0-1. Required
+#                       with PUBLISH_RELEASE=1; a dev build defaults to the
+#                       upstream tag's plain X.Y.Z
+#   SKIP_ENGINE_BUILD=1 reuse an existing server/setup (skip the Gradle build)
+#   SKIP_TESTS=1        build without running the unit tests (-PdisableTests=true)
 #   PUBLISH_RELEASE=1   after signing, attach media + .sha256 + provenance to a
 #                       GitHub release (tag openshare-v<engine-version>) that the
 #                       publish-engine-to-s3{,-prod}.yml and
@@ -51,7 +58,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-INSTALL4JC="${INSTALL4JC:-$HOME/opt/install4j13.0/bin/install4jc}"
+INSTALL4JC="${INSTALL4JC:-$HOME/opt/install4j13.1.1/bin/install4jc}"
 CONFIG="$REPO_ROOT/tools/install4j/oie-installer-config.install4j"
 SETUP="$REPO_ROOT/server/setup"
 BUILD_OUT="$REPO_ROOT/server/build"
@@ -81,7 +88,21 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 # --- Preflight -------------------------------------------------------------
 [ -x "$INSTALL4JC" ] || die "install4jc not found/executable: $INSTALL4JC (set INSTALL4JC=)"
 [ -f "$CONFIG" ]     || die "install4j config missing: $CONFIG"
-for t in ant jarsigner keytool jar pkcs11-tool openssl curl python3; do
+# The config records the install4j version that last saved it. An older install4jc
+# still builds it, with a warning, but may not understand what the newer version
+# wrote, and signing and JRE bundling were never tested that way. Compare
+# major.minor only: install4jc 13.0 (build 13007) reports itself as plain "13.0".
+CONFIG_I4J_VER="$(grep -m1 -oE '<install4j version="[0-9]+\.[0-9]+' "$CONFIG" | grep -oE '[0-9]+\.[0-9]+$' || true)"
+I4JC_VER="$("$INSTALL4JC" --version 2>/dev/null | sed -nE 's/^install4j version ([0-9]+\.[0-9]+).*/\1/p' | head -1 || true)"
+[ -n "$CONFIG_I4J_VER" ] && [ -n "$I4JC_VER" ] \
+  || die "cannot read the install4j versions (config: ${CONFIG_I4J_VER:-?}, install4jc: ${I4JC_VER:-?})"
+if [ "$(printf '%s\n' "$CONFIG_I4J_VER" "$I4JC_VER" | sort -V | head -1)" != "$CONFIG_I4J_VER" ]; then
+  [ "${ALLOW_OLDER_INSTALL4J:-0}" = 1 ] \
+    || die "install4jc is $I4JC_VER, but the install4j config was saved by $CONFIG_I4J_VER: install $CONFIG_I4J_VER or newer and set INSTALL4JC=, or set ALLOW_OLDER_INSTALL4J=1"
+  echo "WARNING: building with install4jc $I4JC_VER; the config was saved by $CONFIG_I4J_VER (ALLOW_OLDER_INSTALL4J=1)" >&2
+fi
+[ -x "$REPO_ROOT/gradlew" ] || die "Gradle wrapper missing: $REPO_ROOT/gradlew"
+for t in java jarsigner keytool jar pkcs11-tool openssl curl python3; do
   command -v "$t" >/dev/null 2>&1 || die "'$t' not on PATH"
 done
 pkcs11-tool --module "$OPENSC" --list-slots 2>&1 | grep -q "Saga IT, LLC" \
@@ -96,11 +117,26 @@ OPENSHARE_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD)"
 
 # A published release records OPENSHARE_COMMIT as the source it was built
 # from, and the public GitHub publisher checks the public tag against it. That
-# only holds if the tracked tree has no uncommitted changes. (Build output is
-# gitignored; untracked files don't reach the Ant build.) Dev builds may be dirty.
-if [ "$PUBLISH_RELEASE" = 1 ] && [ -n "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=no)" ]; then
-  die "uncommitted changes to tracked files — a published release must be built from a clean commit:
-$(git -C "$REPO_ROOT" status --short --untracked-files=no)"
+# only holds if the tree has no uncommitted changes and no untracked files (an
+# untracked source, conf or html file is built into the media just like a
+# committed one; build output is gitignored). Dev builds may be dirty.
+if [ "$PUBLISH_RELEASE" = 1 ] && [ -n "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=all)" ]; then
+  die "uncommitted changes or untracked files — a published release must be built from a clean commit:
+$(git -C "$REPO_ROOT" status --short --untracked-files=all)"
+fi
+# Gradle puts every jar under a module's lib/ directory on the classpath and
+# copies server/lib into server/setup, so a stray jar there (for example one
+# left over from a 4.6.0-x checkout, which vendored its jars) would ship in the
+# media. For every build, refuse anything under the lib/ trees that is not
+# committed as is, including gitignored files, except the build's own copies
+# (mirth-*/donkey-model jars, extension *-shared jars, server/lib/donkey).
+STRAY_LIBS="$(git -C "$REPO_ROOT" status --porcelain --ignored --untracked-files=all -- \
+    client/lib command/lib donkey/lib generator/lib server/lib \
+  | grep -vE '^!! (client/lib/(donkey-model|mirth-client-core|mirth-crypto|mirth-vocab|[^/]+-shared)\.jar|command/lib/(donkey-model|mirth-client-core|mirth-crypto)\.jar|server/lib/donkey/.*)$' || true)"
+[ -z "$STRAY_LIBS" ] || die "files under a lib/ directory that are not committed as is would be built into the media:
+$STRAY_LIBS"
+if [ "$PUBLISH_RELEASE" = 1 ] && [ -z "${RELEASE_VERSION:-}" ]; then
+  die "set RELEASE_VERSION (e.g. RELEASE_VERSION=${UPSTREAM_TAG#v}-1) for a published release"
 fi
 RELEASE_VERSION="${RELEASE_VERSION:-${UPSTREAM_TAG#v}}"
 
@@ -122,8 +158,16 @@ if [ "${SKIP_ENGINE_BUILD:-0}" = 1 ]; then
   echo "==> [1/4] Skipping engine build (SKIP_ENGINE_BUILD=1); reusing $SETUP"
   [ -d "$SETUP/client-lib" ] || die "no existing server/setup — cannot skip the build"
 else
-  echo "==> [1/4] Building engine (ant -DdisableSigning=true)"
-  ( cd "$REPO_ROOT/server" && ant -f mirth-build.xml -DdisableSigning=true )
+  # clean runs first, in its own invocation, so nothing from an earlier build
+  # can reach the media. It deletes server/build, where install4jc writes the
+  # media, so it must never run after step 3. Jar signing is left to step 2;
+  # no -Pversion (see Versioning above). The build never sees the PIN (env -u),
+  # and --no-daemon keeps no Gradle process alive after this script ends.
+  GRADLE_FLAGS=( --no-daemon -PdisableSigning=true )
+  [ "${SKIP_TESTS:-0}" = 1 ] && GRADLE_FLAGS+=( -PdisableTests=true )
+  echo "==> [1/4] Building engine (gradlew clean; gradlew build ${GRADLE_FLAGS[*]})"
+  ( cd "$REPO_ROOT" && env -u TOKEN_PIN ./gradlew --no-daemon clean \
+      && env -u TOKEN_PIN ./gradlew build "${GRADLE_FLAGS[@]}" )
 fi
 
 # The plugin is delivered as a download-time sidecar, never baked into the

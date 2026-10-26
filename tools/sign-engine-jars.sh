@@ -6,7 +6,7 @@
 #
 # Mirrors the proven signing flow in mirthsync-gateway-plugin/build.sh (same
 # token, alias, TSA, cert-chain assembly). Run this on the Linux signing machine
-# with the eToken inserted, AFTER the Ant build produces server/setup and BEFORE
+# with the eToken inserted, AFTER the Gradle build produces server/setup and BEFORE
 # the admin-console plugin is bundled into extensions/ (the plugin is already
 # EV-signed by its own build.sh — don't re-sign it here).
 #
@@ -35,7 +35,8 @@ SIG_ALG="SHA256withRSA"
 DIGEST_ALG="SHA-256"
 
 # BouncyCastle jars ship pre-signed by BC and already carry the security
-# manifest attributes — do NOT modify their manifests (matches the Ant build).
+# manifest attributes — do NOT modify their manifests (matches the upstream build's
+# signSetupJars, as the Ant build did before it).
 BC_EXCLUDE_GLOB='bc*.jar'
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -52,7 +53,7 @@ trap cleanup EXIT
 # ---------------------------------------------------------------------------
 # Preflight
 # ---------------------------------------------------------------------------
-[ -d "$CLIENT_LIB" ] || { echo "ERROR: $CLIENT_LIB not found — run the Ant build first." >&2; exit 1; }
+[ -d "$CLIENT_LIB" ] || { echo "ERROR: $CLIENT_LIB not found — run the Gradle build first (./gradlew build -PdisableSigning=true)." >&2; exit 1; }
 for tool in jarsigner keytool jar openssl curl pkcs11-tool; do
   command -v "$tool" >/dev/null 2>&1 || { echo "ERROR: '$tool' not on PATH." >&2; exit 1; }
 done
@@ -127,7 +128,7 @@ add_manifest_attrs() {   # $1 = jar ; skip BouncyCastle (already has them)
   jar umf "$MANIFEST_FILE" "$1"
 }
 
-sign_one() {             # $1 = jar ; retry for flaky TSA (mirrors Ant retrycount=5)
+sign_one() {             # $1 = jar ; retry a flaky TSA (up to 5 attempts)
   local jar="$1" attempt=1
   until jarsigner -keystore NONE -storetype PKCS11 \
           -providerClass sun.security.pkcs11.SunPKCS11 -providerArg "$PKCS11_CFG" \
@@ -159,7 +160,7 @@ echo
 #
 # Deliberately NOT `jarsigner -verify -strict`. Third-party jars — notably
 # BouncyCastle's bc*.jar — ship pre-signed by their own publisher, and (exactly
-# like the upstream Ant build) we add our signature ON TOP rather than stripping
+# like the upstream build) we add our signature ON TOP rather than stripping
 # theirs: bcprov's original BC signature is what the JVM's JCE framework
 # validates at runtime, so stripping it would break the crypto provider. Those
 # jars are therefore legitimately dual-signed. `-strict` insists on validating

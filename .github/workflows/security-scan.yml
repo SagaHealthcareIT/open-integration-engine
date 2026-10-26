@@ -144,7 +144,14 @@ jobs:
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
       # Lockfiles and manifests (npm, bun, Maven with transitive resolution,
-      # pip, ...) plus committed .jar files.
+      # pip, ...) plus committed .jar files. Since the Gradle build (4.7.0+)
+      # the engine's dependencies are no longer committed jars: they are
+      # declared in gradle/libs.versions.toml and every artifact the build
+      # resolves is pinned, with its checksum, in gradle/verification-metadata.xml,
+      # which is what this scans (java/gradleverificationmetadataxml). That is
+      # a superset of what ships (it also lists build plugins and test
+      # libraries); the jars that are still vendored under */lib are scanned
+      # as archives. The step log and summary list every manifest scanned.
       # Fails on a HIGH or CRITICAL vulnerability (CVSS >= 7.0, or the
       # advisory's own rating when it has no CVSS score) that has a fixed
       # version available. On a PR, only such vulnerabilities that the base
@@ -156,12 +163,18 @@ jobs:
           set -euo pipefail
           scan() {
             local rc=0
-            osv-scanner scan source -r --allow-no-lockfiles --experimental-plugins java/archive \
+            osv-scanner scan source -r --allow-no-lockfiles \
+              --experimental-plugins java/archive,java/gradleverificationmetadataxml \
               --format json --output-file "$2" "$1" > "$2.log" 2>&1 || rc=$?
             # 0 = clean, 1 = vulnerabilities found; anything else is a failed scan.
             if [ "$rc" -gt 1 ]; then cat "$2.log"; echo "::error::osv-scanner failed (exit $rc)"; exit 1; fi
           }
           scan . "$RUNNER_TEMP/head.json"
+          # Show what was scanned, so a manifest that silently stops being
+          # picked up is visible.
+          { echo '### Scanned manifests'; echo; echo '```'
+            grep -E '^Scanned ' "$RUNNER_TEMP/head.json.log" | sed "s|$PWD/||" || echo '(none reported)'
+            echo '```'; echo; } | tee -a "$GITHUB_STEP_SUMMARY"
           if [ "$EVENT" = pull_request ]; then
             git worktree add -q --detach "$RUNNER_TEMP/base" HEAD^1
             scan "$RUNNER_TEMP/base" "$RUNNER_TEMP/base.json"

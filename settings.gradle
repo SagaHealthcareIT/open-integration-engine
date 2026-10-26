@@ -1,0 +1,8 @@
+rootProject.name = 'open-integration-engine'
+
+include 'donkey'
+include 'server'
+include 'client'
+include 'command'
+include 'generator'
+include 'smoketest'

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <body style="font-family: Arial, sans-serif; line-height: 1.6; margin: 1em; background-color: white; color: black;">
-  <h1 style="color: black;">OpenShare Engine</h1>
+  <h1 style="color: black;">OpenShare Engine ${compiler:sys.version}</h1>
   <p>
     OpenShare Engine is Saga IT's build of the Open Integration Engine, licensed under the
     Mozilla Public License 2.0. The complete source code for this release, including our
@@ -10,23 +10,30 @@
     (branch <code>openshare</code>, tagged <code>openshare-v&lt;version&gt;</code> per release).
   </p>
   <p>
-    This installer sets up a fully functional version of the engine with minimal user input.
+    This installer sets up a fully functional version of the engine with minimal user input,
+    or upgrades an existing installation.
     The installer requires administrator permissions to run and install services.
   </p>
   <h2>Notes</h2>
   <ul>
-  <li>A native service is installed and started right away, and is configured to start automatically at boot.</li>
-  <li>The OpenShare admin-console plugin shipped alongside this installer is installed automatically — keep it in the same folder as the installer.</li>
+    <li>A native service is installed and started right away, and is configured to start automatically at boot.</li>
+    <li>The OpenShare admin-console plugin shipped alongside this installer is installed automatically — keep it in the same folder as the installer.</li>
     <li>
-      Default settings from mirth.properties are applied automatically; the installer does not prompt for customization.
+      A new installation has one user, <code>admin</code>. If you downloaded the engine from the OpenShare console,
+      its password is the one the console showed you. Otherwise the engine generates a password on its first start
+      and writes it once to <code>logs/mirth.log</code> (look for "Initial admin password").
+      An upgrade keeps your existing users and passwords.
     </li>
-    <li>This includes ports (default: 8080 and 8443), log and app data paths, and password requirements.</li>
     <li>
-      Previous installations are not preserved, though runtime-created directories 
-      (e.g., appdata) 
-      are retained across installs.
+      A new installation uses the default configuration files in the conf directory;
+      the installer does not prompt for customization.
+      This includes ports (default: 8080 and 8443), log and app data paths, and password requirements.
     </li>
-
+    <li>
+      An upgrade replaces the program files from the previous installation.
+      Files in the conf directory are kept and are not updated with new defaults.
+      Directories created at runtime, such as appdata, are also kept.
+    </li>
   </ul>
 </body>
 </html>

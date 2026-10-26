@@ -3,9 +3,9 @@
 /*
  * Manual verification for the Administrator's channel tag field (IRT-2431).
  *
- * This is deliberately NOT a JUnit test and is not wired into any ant target. The tag field is
- * a JavaFX WebView, so it needs a real display and a JavaFX-bearing JRE; CI runners have
- * neither a display nor xvfb, and anything under client/test matching *Test.class is collected
+ * This is deliberately NOT a JUnit test and is not part of any Gradle source set. The tag field
+ * is a JavaFX WebView, so it needs a real display and a JavaFX-bearing JRE; CI runners have
+ * neither a display nor xvfb, and anything under client/src/test/java matching *Test is collected
  * and run automatically. See README.md for why this matters and how to run it.
  *
  * It drives the real MirthTagWebBrowser rather than a copy of its logic, so it fails both when

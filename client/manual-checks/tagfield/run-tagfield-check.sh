@@ -12,6 +12,9 @@ set -euo pipefail
 
 CHECK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLIENT_DIR="$(cd "${CHECK_DIR}/../.." && pwd)"
+# The Gradle build resolves the client's dependencies from Maven Central, so client/lib holds
+# only a few of them; the assembled client-lib in server/setup has the full set.
+CLIENT_LIB="$(cd "${CLIENT_DIR}/.." && pwd)/server/setup/client-lib"
 
 USE_CLASSES=false
 if [[ "${1:-}" == "--classes" ]]; then
@@ -35,19 +38,22 @@ fi
 
 # Default to the built mirth-client.jar: every real launch loads the page from inside it, as
 # jar: URLs, which is the scheme the July 2026 OpenJFX update stopped loading from loadContent
-# pages. --classes runs against client/classes instead (file: URLs), which does not exercise that.
+# pages. --classes runs against the compiled classes and resources instead (file: URLs), which
+# does not exercise that.
 if [[ "${USE_CLASSES}" == "true" ]]; then
-    CLIENT_CP="${CLIENT_DIR}/classes"
+    CLIENT_BUILT="${CLIENT_DIR}/build/classes/java/main"
+    CLIENT_CP="${CLIENT_BUILT}:${CLIENT_DIR}/build/resources/main"
 else
-    CLIENT_CP="${CLIENT_DIR}/dist/mirth-client.jar"
+    CLIENT_BUILT="${CLIENT_DIR}/dist/mirth-client.jar"
+    CLIENT_CP="${CLIENT_BUILT}"
 fi
-if [[ ! -e "${CLIENT_CP}" ]]; then
-    echo "error: ${CLIENT_CP} not found. Build the client first:" >&2
-    echo "  cd server && ant -f mirth-build.xml -DdisableSigning=true -DdisableTests=true" >&2
+if [[ ! -e "${CLIENT_BUILT}" || ! -d "${CLIENT_LIB}" ]]; then
+    echo "error: ${CLIENT_BUILT} or ${CLIENT_LIB} not found. Build first, from the repository root:" >&2
+    echo "  ./gradlew build -PdisableSigning=true -PdisableTests=true" >&2
     exit 65
 fi
 
-CP="${CLIENT_CP}:${CLIENT_DIR}/lib/*"
+CP="${CLIENT_CP}:${CLIENT_LIB}/*"
 OUT="${CHECK_DIR}/out"
 
 echo "--- compiling the check"

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<install4j version="13.0" transformSequenceNumber="13">
-  <application name="OpenShare Engine" applicationId="2452-6733-0152-0496" mediaDir="${compiler:installer:mediaRoot}/server/build" shortName="oie" publisher="Saga IT, LLC" publisherWeb="https://openshare.health" version="4.6.0" backupOnSave="true" autoSave="true" macVolumeId="27d28c9f9b4fef92" javaMinVersion="21" javaMaxVersion="25">
+<install4j version="13.1.1" transformSequenceNumber="13">
+  <application name="OpenShare Engine" applicationId="2452-6733-0152-0496" mediaDir="${compiler:installer:mediaRoot}/server/build" shortName="oie" publisher="Saga IT, LLC" publisherWeb="https://openshare.health" version="4.7.0" backupOnSave="true" autoSave="true" macVolumeId="27d28c9f9b4fef92" javaMinVersion="21" javaMaxVersion="999">
     <variables>
       <variable name="installer:mediaRoot" value="../.." />
     </variables>
@@ -19,7 +19,6 @@
       <dirEntry mountPoint="24" file="${compiler:installer:mediaRoot}/server/setup" subDirectory="setup">
         <exclude>
           <entry location="conf" />
-          <entry location="configure-from-env" />
           <entry location="oieserver" />
           <entry location="oieserver.ps1" />
         </exclude>
@@ -27,8 +26,7 @@
       <dirEntry mountPoint="24" file="${compiler:installer:mediaRoot}/server/setup" overwriteMode="never" uninstallMode="never" overrideOverwriteMode="true" overrideUninstallMode="true">
         <exclude>
           <entry location="server-lib" />
-          <entry location="webapps" />
-          <entry location="mirth-manager-launcher.jar" />
+          <entry location="configure-from-env" />
           <entry location="public_html" />
           <entry location="oieserver.vmoptions" />
           <entry location="cli-lib" />
@@ -37,7 +35,8 @@
           <entry location="public_api_html" />
           <entry location="docs" />
           <entry location="extensions" />
-          <entry location="manager-lib" />
+          <entry location="oieserver.ps1" />
+          <entry location="oieserver" />
           <entry location="mirth-cli-launcher.jar" />
           <entry location="logs" />
           <entry location="oieservice.vmoptions" />
@@ -127,7 +126,7 @@
                   <property name="obtainIfNormalWin" type="boolean" value="true" />
                 </serializedBean>
               </action>
-              <action id="9002" beanClass="com.install4j.runtime.beans.actions.control.SetInstallationDirectoryAction" actionElevationType="none" />
+              <action id="168" beanClass="com.install4j.runtime.beans.actions.control.SetInstallationDirectoryAction" actionElevationType="none" />
             </actions>
           </screen>
         </startup>
@@ -278,35 +277,6 @@ return console.askOkCancel(message, true);
               </formComponent>
               <formComponent id="108" beanClass="com.install4j.runtime.beans.formcomponents.HtmlDisplayFormComponent" useExternalParametrization="true" externalParametrizationName="HTML or text display" externalParametrizationMode="include">
                 <serializedBean>
-                  <property name="textSource" type="enum" class="com.install4j.runtime.beans.screens.components.TextSource" value="DIRECT" />
-                  <property name="displayedText" type="string">&lt;!DOCTYPE html&gt;
-&lt;html&gt;
-&lt;body style="font-family: Arial, sans-serif; line-height: 1.6; margin: 1em; background-color: white; color: black;"&gt;
-  &lt;h1 style="color: black;"&gt;OpenShare Engine - Preview Release&lt;/h1&gt;
-  &lt;p&gt;This is a preview release of the OpenShare Engine.&lt;/p&gt;
-  &lt;p&gt;
-    This release is recommended for users already familiar with Mirth Connect.
-    It installs a fully functional version of the engine with minimal prompts.
-    As you have seen - this does require admin permissions to run and install services, we will be updating that!
-  &lt;/p&gt;
-  &lt;h2&gt;Notes&lt;/h2&gt;
-  &lt;ul&gt;
-  &lt;li&gt;A native service is installed and started right away, and is configured to start automatically at boot.&lt;/li&gt;
-  &lt;li&gt;The OpenShare admin-console plugin shipped alongside this installer is installed automatically — keep it in the same folder as the installer.&lt;/li&gt;
-    &lt;li&gt;
-      Default settings from mirth.properties are applied automatically; the installer does not prompt for customization.
-    &lt;/li&gt;
-    &lt;li&gt;This includes ports (default: 8080 and 8443), log and app data paths, and password requirements.&lt;/li&gt;
-    &lt;li&gt;
-      Previous installations are not preserved, though runtime-created directories
-      (e.g., appdata)
-      are retained across installs.
-    &lt;/li&gt;
-
-  &lt;/ul&gt;
-&lt;/body&gt;
-&lt;/html&gt;
-</property>
                   <property name="displayedTextFile" id="LocalizedExternalFile0">
                     <property name="languageIdToExternalFile">
                       <entry>
@@ -397,6 +367,7 @@ return true;
           </screen>
           <screen id="15" beanClass="com.install4j.runtime.beans.screens.InstallationScreen" rollbackBarrier="true" rollbackBarrierExitCode="0">
             <actions>
+              <action id="169" beanClass="com.install4j.runtime.beans.actions.UninstallPreviousAction" actionElevationType="elevated" rollbackBarrierExitCode="0" />
               <action id="17" beanClass="com.install4j.runtime.beans.actions.InstallFilesAction" actionElevationType="elevated" rollbackBarrierExitCode="0" failureStrategy="quit" errorMessage="${i18n:FileCorrupted}">
                 <serializedBean>
                   <property name="fileFilterScript">
@@ -476,6 +447,57 @@ if (src.isFile()) {
     java.nio.file.Files.copy(src.toPath(),
         new java.io.File(pluginDir, "bootstrap.json").toPath(),
         java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+
+    // A new 4.7.0+ install's bootstrap.json also carries the engine's initial
+    // admin password (engine.initialAdminPassword), which the console showed
+    // the user once. The engine reads server.initialadminpassword only when it
+    // creates its database, so it goes into mirth.properties before the
+    // service first starts; the OpenShare plugin blanks it after that start.
+    // An existing database keeps its own password and ignores the value.
+    //
+    // The install4j runtime has no JSON parser, so read this one field
+    // directly: contact-system-api generates the password from characters
+    // that need no escaping in JSON or in a .properties value
+    // (installers/initial-admin-password.ts).
+    String envelope = new String(java.nio.file.Files.readAllBytes(src.toPath()),
+        java.nio.charset.StandardCharsets.UTF_8);
+    java.util.regex.Matcher field = java.util.regex.Pattern.compile(
+        "\"engine\"\\s*:\\s*\\{[^{}]*?\"initialAdminPassword\"\\s*:\\s*\"([^\"]*)\"").matcher(envelope);
+    if (field.find()) {
+        String password = field.group(1);
+        java.io.File props = new java.io.File(context.getInstallationDirectory(), "conf/mirth.properties");
+        // Printable ASCII without space, quotes, '\' (JSON and .properties
+        // escapes), '$' (the engine's ${...} interpolation), ',' (a list
+        // delimiter to some loaders), '=' and ':' (separators) or '#' and '!'
+        // (comments). Never write a value the engine would read differently:
+        // without one it generates a random password and logs it once.
+        if (!password.matches("[!-~]+") || password.matches(".*[\"'\\\\$,=:#!].*")) {
+            com.install4j.api.Util.logInfo(null, "bootstrap.json has an initial admin password with characters"
+                + " mirth.properties cannot carry as-is; not setting server.initialadminpassword");
+        } else if (!props.isFile()) {
+            com.install4j.api.Util.logInfo(null, "No " + props + "; not setting server.initialadminpassword");
+        } else {
+            String text = new String(java.nio.file.Files.readAllBytes(props.toPath()),
+                java.nio.charset.StandardCharsets.ISO_8859_1);
+            String eol = text.contains("\r\n") ? "\r\n" : "\n";
+            String line = "server.initialadminpassword = " + password;
+            // The key's own line(s), commented-out and similarly named keys
+            // excluded. Upstream's default file ships it blank.
+            java.util.regex.Matcher existing = java.util.regex.Pattern.compile(
+                "(?m)^[ \\t]*server\\.initialadminpassword(?![^ \\t=:\\r\\n])[^\\r\\n]*").matcher(text);
+            if (existing.find()) {
+                text = existing.replaceAll(java.util.regex.Matcher.quoteReplacement(line));
+            } else {
+                if (!text.isEmpty() &amp;&amp; !text.endsWith("\n")) {
+                    text += eol;
+                }
+                text += line + eol;
+            }
+            java.nio.file.Files.write(props.toPath(), text.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1));
+            com.install4j.api.Util.logInfo(null, "Set server.initialadminpassword in " + props
+                + " from bootstrap.json (used only when the engine creates a new database)");
+        }
+    }
 }
 return true;</property>
                     </object>
@@ -797,7 +819,7 @@ return console.askYesNo(message, true);
                   <formComponent name="Title" id="16" beanClass="com.install4j.runtime.beans.styles.ScreenTitleComponent">
                     <serializedBean>
                       <property name="labelWidgetStyleId" type="null" />
-                      <property name="labelWidgetStyle">
+                      <property name="labelWidgetStyle" id="LabelWidgetStyle0">
                         <property name="fontDescriptor">
                           <property name="fontType" type="enum" class="com.install4j.runtime.beans.formcomponents.FontType" value="DERIVED" />
                           <property name="fontStyle" type="enum" class="com.install4j.runtime.beans.formcomponents.FontStyle" value="BOLD" />
@@ -872,30 +894,37 @@ return console.askYesNo(message, true);
     </widgetStyles>
   </installerGui>
   <mediaSets>
-    <windows name="Windows x64" id="27" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine" architecture="64">      <jreBundle usePack200="false" jreBundleSource="none" />
+    <windows name="Windows x64" id="27" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine" architecture="64">
+      <jreBundle usePack200="false" jreBundleSource="none" />
     </windows>
-    <unixInstaller name="Unix Installer" id="42" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine">      <jreBundle usePack200="false" jreBundleSource="none" />
+    <unixInstaller name="Unix Installer" id="42" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine">
+      <jreBundle usePack200="false" jreBundleSource="none" />
     </unixInstaller>
-    <macosFolder name="macOS Folder - ARM" id="43" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-aarch" installDir="OpenShareEngine">      <jreBundle usePack200="false" jreBundleSource="none" />
+    <macosFolder name="macOS Folder - ARM" id="43" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-aarch" installDir="OpenShareEngine">
+      <jreBundle usePack200="false" jreBundleSource="none" />
     </macosFolder>
-    <unixArchive name="Unix Archive" id="44" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine">      <exclude>
-        <entry location="mirth-manager-launcher.jar" />
-      </exclude>
+    <unixArchive name="Unix Archive" id="44" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine">
       <jreBundle jreBundleSource="none" />
     </unixArchive>
-    <macosFolder name="macOS Folder - Intel" id="116" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-x86" installDir="OpenShareEngine" architecture="amd64">      <jreBundle usePack200="false" jreBundleSource="none" />
+    <macosFolder name="macOS Folder - Intel" id="116" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-x86" installDir="OpenShareEngine" architecture="amd64">
+      <jreBundle usePack200="false" jreBundleSource="none" />
     </macosFolder>
-    <windows name="Windows ARM" id="119" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine" architecture="arm64">      <jreBundle jreBundleSource="none" />
+    <windows name="Windows ARM" id="119" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine" architecture="arm64">
+      <jreBundle jreBundleSource="none" />
     </windows>
-    <windows name="Windows x64-with-JRE" id="121" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-with-JRE" installDir="OpenShareEngine" architecture="64">      <jreBundle usePack200="false" />
+    <windows name="Windows x64-with-JRE" id="121" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-with-JRE" installDir="OpenShareEngine" architecture="64">
+      <jreBundle usePack200="false" />
     </windows>
-    <unixInstaller name="Unix Installer-with-JRE" id="125" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-with-JRE" installDir="OpenShareEngine">      <jreBundle usePack200="false" />
+    <unixInstaller name="Unix Installer-with-JRE" id="125" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-with-JRE" installDir="OpenShareEngine">
+      <jreBundle usePack200="false" />
     </unixInstaller>
-    <macosFolder name="macOS Folder - ARM-with-JRE" id="130" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-aarch-with-JRE" installDir="OpenShareEngine">      <jreBundle usePack200="false" />
+    <macosFolder name="macOS Folder - ARM-with-JRE" id="130" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-aarch-with-JRE" installDir="OpenShareEngine">
+      <jreBundle usePack200="false" />
     </macosFolder>
-    <macosFolder name="macOS Folder - Intel-with-JRE" id="133" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-x86-with-JRE" installDir="OpenShareEngine" architecture="amd64">      <jreBundle usePack200="false" />
+    <macosFolder name="macOS Folder - Intel-with-JRE" id="133" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-x86-with-JRE" installDir="OpenShareEngine" architecture="amd64">
+      <jreBundle usePack200="false" />
     </macosFolder>
-    <windows name="Windows ARM-with-JRE" id="136" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-with-JRE" installDir="OpenShareEngine" architecture="arm64">    </windows>
+    <windows name="Windows ARM-with-JRE" id="136" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-with-JRE" installDir="OpenShareEngine" architecture="arm64" />
     <windowsArchive name="Windows x64 Archive" id="153" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine" architecture="64">
       <jreBundle jreBundleSource="none" />
     </windowsArchive>
@@ -903,7 +932,7 @@ return console.askYesNo(message, true);
       <jreBundle jreBundleSource="none" />
     </windowsArchive>
   </mediaSets>
-  <buildIds buildAll="false">
+  <buildIds>
     <mediaSet refId="42" />
   </buildIds>
 </install4j>

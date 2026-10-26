@@ -1,0 +1,46 @@
+package com.mirth.connect.client.ui;
+
+import javax.swing.ImageIcon;
+
+public class BrandingConstants {
+
+    public static final String PRODUCT_NAME = "OpenShare Engine";
+    public static final String COMPANY_NAME = "OpenShare";
+
+    /*
+        Sets the title of the Administrator window
+     */
+    public static final String WINDOW_TITLE = "OpenShare Engine Administrator";
+
+    public static final String ISSUE_TRACKER_LOCATION = "https://github.com/SagaHealthcareIT/open-integration-engine/issues";
+
+
+    // The URL that is opened when clicking the bottom image in Login window
+    // The one where you're asked for server URL, username, and password
+    public static final String COMPANY_URL = "https://openshare.health";
+    public static final String COMPANY_TOOLTIP = "OpenShare";
+
+
+    // The URL that is opened when clicking the image in the Top right corner of the main administrator window
+    // The URL that is opened when clicking "Visit + PRODUCT_NAME" button in Administrator
+    public static final String PRODUCT_URL = "https://openshare.health";
+    public static final String PRODUCT_TOOLTIP = "OpenShare Engine";
+
+
+    // The URL that is opened when clicking "Help" button in Administrator
+    public static String HELP_URL_LOCATION = "https://docs.openshare.health";
+
+    // The URL that is opened when clicking "System Requirements" button in the error dialog when an unsupported Java version is detected
+    public static final String SYSTEM_REQUIREMENTS_URL = "https://docs.openshare.health";
+
+    // The "More info" in Server settings "Provide usage statistics"
+    public static final String PRIVACY_URL = "https://openshare.health/privacy";
+    public static final String PRIVACY_TOOLTIP = "Privacy Information";
+
+    // Icons
+    // Favicon must be at 32px x 32px scale
+    public static final ImageIcon FAVICON = new ImageIcon(com.mirth.connect.client.ui.Frame.class.getResource("images/branding/openshare_logo_only_white_background_32x32.png"));
+    // These images must be at 215px x 30px scale
+    public static final ImageIcon LOGO = new ImageIcon(com.mirth.connect.client.ui.Frame.class.getResource("images/branding/openshare_logo_banner_text_215x30.png"));
+    public static final ImageIcon LOGO_GRAY = new ImageIcon(com.mirth.connect.client.ui.Frame.class.getResource("images/branding/openshare_white_logo_banner_text_215x30.png"));
+}

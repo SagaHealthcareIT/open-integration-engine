@@ -13,11 +13,11 @@ yet", so it survived unnoticed from the July 2026 OpenJFX update until a communi
 
 ## Why this is not a JUnit test
 
-It needs a real display. CI runners have a JavaFX-bearing JDK (`.github/workflows/build.yaml` sets
-`java-package: 'jdk+fx'`) but no display and no `xvfb`, so JavaFX toolkit startup fails there.
-Anything placed under `client/test/` matching `*Test.class` is collected and run automatically
-by `client/ant-build.xml`, so a test there would fail every CI run. This directory is
-deliberately outside the ant build graph, and the class is named `...Check`, not `...Test`.
+It needs a real display. CI builds in Docker with the JavaFX-bearing JDK that `.sdkmanrc` pins,
+but with no display and no `xvfb`, so JavaFX toolkit startup fails there.
+Any class under `client/src/test/java/` matching `*Test` is collected and run automatically
+by the Gradle build, so a test there would fail every CI run. This directory is deliberately
+outside the Gradle source sets, and the class is named `...Check`, not `...Test`.
 
 The repo's usual headless guard, `Assume.assumeFalse(GraphicsEnvironment.isHeadless())`, is an
 AWT check and would not reliably cover a JavaFX toolkit failure, so it is not a way out here.
@@ -30,8 +30,8 @@ reintroduces the `WebEngine.loadContent` approach that caused IRT-2431.
 
 ## Prerequisites
 
-1. A built client, so `client/dist/mirth-client.jar` exists:
-   `cd server && ant -f mirth-build.xml -DdisableSigning=true -DdisableTests=true`
+1. A built client, so `client/dist/mirth-client.jar` and `server/setup/client-lib` exist. From
+   the repository root: `./gradlew build -PdisableSigning=true -PdisableTests=true`
 2. A JDK that bundles JavaFX (a `jdk+fx` build, for example Azul Zulu FX). A plain JDK fails at
    toolkit startup, which is a broken check rather than a failing one.
 3. A desktop session. Do not run this over a plain SSH connection.
@@ -44,8 +44,9 @@ client/manual-checks/tagfield/run-tagfield-check.sh /path/to/jdk-fx-home
 
 It runs against `client/dist/mirth-client.jar`, so the page and its resources load as `jar:`
 URLs, as in every real launch; that is the scheme the July 2026 OpenJFX update stopped loading
-from `loadContent` pages. `--classes` (before the JDK path) runs against `client/classes`
-instead, whose `file:` URLs do not exercise that path.
+from `loadContent` pages. `--classes` (before the JDK path) runs against the compiled classes
+and resources under `client/build` instead, whose `file:` URLs do not exercise that path.
+Either way the client's dependencies come from `server/setup/client-lib`.
 
 With no JDK argument it uses `$JAVA_HOME`. Both Azul layouts are handled: some bundles are flat,
 others nest under `Contents/Home`.

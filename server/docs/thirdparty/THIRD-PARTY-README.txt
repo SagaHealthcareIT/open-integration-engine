@@ -12,11 +12,11 @@ The following are distributed under the terms of the Apache License version 2.0
 	Apache Derby 10.17.1.0
 	Apache Geronimo (only components needed for the JMS API)
 	Apache HttpComponents 4.x [incl. CLI]
-	Apache Log4j 2.25.4 [incl. CLI]
+	Apache Log4j 2.26.1 [incl. CLI]
 	Apache PDFBox 2.0.24
 	Apache Standard Taglib 1.2.5
-	Apache Tomcat Jasper JSP Engine 8.5.70
-	Apache Tomcat Jasper Expression Language Impl 8.5.70
+	Apache Tomcat Jasper JSP Engine 9.0.102
+	Apache Tomcat Jasper Expression Language Impl 9.0.102
 	Apache Velocity Engine 2.3 [incl. CLI]
 	Apache Velocity Tools 3.1 [incl. CLI]
 	AWS SDK v2 for Java (https://github.com/aws/aws-sdk-java-v2)
@@ -67,13 +67,14 @@ terms.
 
 	dcm4che 2.0.29 (source code can be downloaded at: http://www.dcm4che.org/)
 	DcmRcv and DcmSnd were modified to allow overriding of the network
-	connections.
+	connections. The modified source is included in the Open Integration
+	Engine source code under server/src/main/java/org/dcm4che2/tool/.
 
 	HAPI 2.3 (source code can be downloaded at: 
 	https://github.com/hapifhir/hapi-hl7v2)
 
 	Javassist 3.26.0 [incl. CLI] (source code can be downloaded at:
-	http://www.csg.ci.i.u-tokyo.ac.jp/~chiba/javassist/)
+	https://github.com/jboss-javassist/javassist/tree/rel_3_26_0_ga)
 
 	
 --------------------------------------------------------------------------------
@@ -84,9 +85,11 @@ The following are distributed under the terms of the MPL version 2.0
 terms.
 
 	Mozilla Rhino 1.7.13 [incl. CLI] (source code can be downloaded at:
-	https://github.com/mozilla/rhino)
+	https://github.com/mozilla/rhino/tree/Rhino1_7_13_Release)
 	This library was modified to fix some issues in XML processing, and to make
-	the debugger easier to implement.
+	the debugger easier to implement. The modified source is included in the
+	Open Integration Engine source code under
+	server/src/main/java/org/mozilla/javascript/.
 
 	OpenPDF 1.4.2 (source code can be downloaded at:
 	https://github.com/LibrePDF/OpenPDF)
@@ -103,8 +106,8 @@ terms.
 The following are distributed under the terms of the Common Development and
 Distribution License version 1.1 (see CDDL-1.1.txt):
 
-	AOP Alliance Repackaged 2.4.0 (source code can be downloaded from:
-	https://sourceforge.net/projects/aopalliance/)
+	AOP Alliance Repackaged 2.4.0-b31 (source code can be downloaded from:
+	https://repo1.maven.org/maven2/org/glassfish/hk2/external/aopalliance-repackaged/2.4.0-b31/aopalliance-repackaged-2.4.0-b31-sources.jar)
 
 	Extended StAX API 1.8 (source code can be downloaded from:
 	https://github.com/javaee/metro-stax-ex/tree/1.8) 
@@ -118,8 +121,9 @@ Distribution License version 1.1 (see CDDL-1.1.txt):
 	GlassFish MBean Annotation Library 3.1.0.b001 (source code can be downloaded
 	from: https://github.com/javaee/gmbal/tree/VERSION-3.1.0-b001)
 
-	HK2 2.4.0 [incl. CLI] (source code can be downloaded from:
-	https://hk2.java.net/2.4.0-b34/)
+	HK2 2.4.0-b31 [incl. CLI] (source code for each module is available as
+	its 2.4.0-b31 -sources.jar under:
+	https://repo1.maven.org/maven2/org/glassfish/hk2/)
 	
 	IStack Commons Runtime 3.0.6 (source code can be downloaded from: 
 	https://github.com/javaee/jaxb-istack-commons)
@@ -132,7 +136,7 @@ Distribution License version 1.1 (see CDDL-1.1.txt):
 	https://github.com/javaee/metro-jax-ws/tree/2.3.0.2/jaxws-ri)
 	
 	Java Persistence API 1.0 (source code can be downloaded from:
-	https://glassfish.java.net/downloads/persistence/JavaPersistence.html)
+	https://repo1.maven.org/maven2/javax/persistence/persistence-api/1.0/persistence-api-1.0-sources.jar)
 	
 	Java XML Bind API 2.4.0-b180725.0427 [incl. CLI] (source code can be
 	downloaded from: https://github.com/javaee/jaxb-spec/tree
@@ -142,28 +146,33 @@ Distribution License version 1.1 (see CDDL-1.1.txt):
 	downloaded from: https://github.com/javaee/jaxb-v2/tree
 	/2.4.0-b180725.0644/jaxb-ri)
 	
-	JAXB TXW Runtime 2.4.0-b180725.0427 (source code can be downloaded from:
-	https://github.com/javaee/jaxb-v2/tree/master/jaxb-ri/txw)
+	JAXB TXW Runtime 2.4.0-b180725.0644 (source code can be downloaded from:
+	https://github.com/javaee/jaxb-v2/tree
+	/2.4.0-b180725.0644/jaxb-ri/txw)
 	
-	Jersey RESTful Web Services framework 2.22.1 [incl. CLI] (source code can be
-	downloaded from: https://jersey.java.net/)
+	Jersey RESTful Web Services framework 2.22.1 [incl. CLI] (source code for
+	each module is available as its 2.22.1 -sources.jar under:
+	https://repo1.maven.org/maven2/org/glassfish/jersey/)
 	The WebResourceFactory class was modified to open visibility on methods so
-	that it could be overridden.
+	that it could be overridden. The modified source is included in the Open
+	Integration Engine source code at
+	server/src/main/java/org/glassfish/jersey/client/proxy/WebResourceFactory.java.
 	
-	JSR 374 JSON Processing API 1.0 (source code can be downloaded from: 
-	http://json-processing-spec.java.net)
+	JSON Processing API 1.0 (source code can be downloaded from:
+	https://repo1.maven.org/maven2/javax/json/javax.json-api/1.0/javax.json-api-1.0-sources.jar)
 	
-	JSR 374 JSON Processing Default Provider 1.0.4 (source code can be downloaded
-	from: https://jsonp.java.net/)
+	JSON Processing Default Provider 1.0.4 (source code can be
+	downloaded from:
+	https://repo1.maven.org/maven2/org/glassfish/javax.json/1.0.4/javax.json-1.0.4-sources.jar)
 
 	Mimepull 1.9.7 [incl. CLI] (source code can be downloaded from:
-	https://mimepull.java.net/)
+	https://repo1.maven.org/maven2/org/jvnet/mimepull/mimepull/1.9.7/mimepull-1.9.7-sources.jar)
 	
 	SOAP with Attachment API for Java 1.4.0 (source code can be downloaded from:
 	https://github.com/javaee/javax.xml.soap/tree/1.4.0)
 	
-	SOAP with Attachment API for Java Impl 1.0 (source code can be downloaded
-	from: https://javaee.github.io/metro-saaj/)
+	SOAP with Attachment API for Java Impl 1.4.0 (source code can be downloaded
+	from: https://github.com/javaee/metro-saaj/tree/1.4.0)
 	
 	WS-Policy Implementation for Project Metro 2.7.2 (source code can be
 	downloaded from: https://github.com/javaee/metro-policy/tree/policy-2.7.2)
@@ -184,15 +193,14 @@ Distribution License version 1.0 (see CDDL-1.0.txt):
 	Swinglabs Wizard (source code can be downloaded from:
 	https://java.net/projects/wizard)
 	
-	Java Common Annotations API 1.3 [incl. CLI] (source code can be downloaded
-	from: https://github.com/javaee/javax.annotation/tree/1.3)
+	Java Common Annotations API 1.3.2 [incl. CLI] (source code can be downloaded
+	from: https://github.com/javaee/javax.annotation/tree/1.3.2)
 	
 	OSGi Resource Locator 1.0.1 (source code can be downloaded from:
-	https://github.com/eclipse-ee4j/glassfish-hk2-extra/tree/master/
-	osgi-resource-locator)
+	https://repo1.maven.org/maven2/org/glassfish/hk2/osgi-resource-locator/1.0.1/osgi-resource-locator-1.0.1-sources.jar)
 
 	Web Services Metadata API / JSR-181 (source code can be downloaded from:
-	https://mvnrepository.com/artifact/javax.jws/jsr181-api/1.0-MR1)
+	https://repo1.maven.org/maven2/javax/jws/jsr181-api/1.0-MR1/jsr181-api-1.0-MR1-sources.jar)
 
 
 --------------------------------------------------------------------------------
@@ -202,7 +210,7 @@ The following are distributed under the terms of the Eclipse Public License
 version 2.0 (see EPL-2.0.txt):
 
 	Eclipse Compiler For Java 3.19.0 (source code can be downloaded from:
-	http://www.eclipse.org/jdt)
+	https://repo1.maven.org/maven2/org/eclipse/jdt/ecj/3.19.0/ecj-3.19.0-sources.jar)
 
 	Jetty Servlet API 4.0.6 (source code can be downloaded from:
 	https://github.com/jetty/jetty.toolchain)
@@ -255,20 +263,11 @@ version 1.0 (see CPL-1.0.txt):
 --------------------------------------------------------------------------------
 
 
-The following are distributed under the terms of the Artistic License
-version 1.0 (see ARTISTIC-LICENSE-1.0.txt):
-
-	Display tag library (displaytag.org)
-	
-	
---------------------------------------------------------------------------------
-
-
 The following are distributed under the terms of the OSGi Specification
 License, Version 1.0 (see OSGi-1.0.txt):
 
 	OSGi Core Release 4.2.0 (source code can be downloaded from:
-	https://www.osgi.org/release-4-version-4-2/)
+	https://repo1.maven.org/maven2/org/osgi/org.osgi.core/4.2.0/org.osgi.core-4.2.0-sources.jar)
 	
 	
 --------------------------------------------------------------------------------
@@ -277,14 +276,11 @@ License, Version 1.0 (see OSGi-1.0.txt):
 Eclipse Java Development Tools 3.19.0
 
 Licensing information for this software can be found in the about.html file
-contained within the org.eclipse.jdt.ecj-3.19.0.jar file. This file
-can be found within the installation folder at:
+contained within the org.eclipse.jdt.ecj-3.19.0.jar file.
 
-	[Install Folder]/server-lib/jetty/jsp/
+Its source code is available at:
 
-Or in the source code distribution, it can be found at:
-
-	[Server Source Folder]/lib/jetty/jsp/
+	https://repo1.maven.org/maven2/org/eclipse/jdt/ecj/3.19.0/ecj-3.19.0-sources.jar
 
 
 --------------------------------------------------------------------------------
@@ -292,9 +288,10 @@ Or in the source code distribution, it can be found at:
 
 The jTDS JDBC driver version 1.3.1 is covered by the LGPL version 2.1 (see
 LGPL-2.1.txt). The library source code is available at
-http://jtds.sourceforge.net/. The following file has been changed:
+http://jtds.sourceforge.net/. The following file has been changed, and the
+modified source is included in the Open Integration Engine source code at:
 
-	net/sourceforge/jtds/ssl/TdsTlsOutputStream.java
+	server/src/main/java/net/sourceforge/jtds/ssl/TdsTlsOutputStream.java
 	
 	Changes: Fixes made to allow SSL/TLS connections. More information here:
 	https://sourceforge.net/p/jtds/bugs/725/
@@ -307,7 +304,7 @@ http://jtds.sourceforge.net/. The following file has been changed:
 The MySQL Connector/J JDBC Driver version 8.4.0 is covered by the GPL
 version 2 with Oracle's Free and Open Source Software ("FOSS") License
 Exception (see MYSQL-CONNECTOR-LICENSE.txt). The library source code is
-available at http://mirrors.ibiblio.org/maven2/mysql/mysql-connector-j/8.4.0/src/.
+available at https://github.com/mysql/mysql-connector-j/tree/8.4.0
 
 
 --------------------------------------------------------------------------------
@@ -315,31 +312,31 @@ available at http://mirrors.ibiblio.org/maven2/mysql/mysql-connector-j/8.4.0/src
 
 The jcifs-ng SMB client library in Java version 2.1.10 is covered by the
 LGPL version 2.1 (see LGPL-2.1.txt). The library source code is available at
-https://github.com/AgNO3/jcifs-ng/.
+https://github.com/AgNO3/jcifs-ng/
 	
 	
 --------------------------------------------------------------------------------
 
 
-The Pdf-renderer library ([Install Folder]/extensions/pdfviewer/lib/PDFRenderer.jar)
-is covered by the LGPL version 2.1 (see LGPL-2.1.txt). The library source code
-is available at https://java.net/projects/pdf-renderer/.
+The Pdf-renderer library version 1.0.5 is covered by the LGPL version 2.1
+(see LGPL-2.1.txt). The library source code is available at
+https://repo1.maven.org/maven2/org/swinglabs/pdf-renderer/1.0.5/pdf-renderer-1.0.5-sources.jar
 
 
 --------------------------------------------------------------------------------
 
 
-javaparser version 1.0.8 is covered by the LGPL version 2.1 (see
-LGPL-2.1.txt). The library source code is available at
-https://code.google.com/p/javaparser/.
+javaparser version 1.0.8 is covered by the LGPL version 3 or later (see
+LGPL-3.0.txt). The library source code is available at
+https://repo1.maven.org/maven2/com/google/code/javaparser/javaparser/1.0.8/javaparser-1.0.8-sources.jar
 
 
 --------------------------------------------------------------------------------
 
 
-SwingLabs SwingX version 1.6.2 is covered by the LGPL version 2.1 (see
+SwingLabs SwingX version 1.6.2-2 is covered by the LGPL version 2.1 (see
 LGPL-2.1.txt). The library source code is available at
-https://swingx.java.net/.
+https://repo1.maven.org/maven2/org/swinglabs/swingx-core/1.6.2-2/swingx-core-1.6.2-2-sources.jar
 
 
 --------------------------------------------------------------------------------
@@ -347,7 +344,7 @@ https://swingx.java.net/.
 
 openhtmltopdf version 1.0.9 is covered by the LGPL version 2.1 (see
 LGPL-2.1.txt). The library source code is available at
-https://github.com/danfickle/openhtmltopdf/.
+https://github.com/danfickle/openhtmltopdf/
 
 
 --------------------------------------------------------------------------------
@@ -450,7 +447,7 @@ The license information below pertains to Flying Saucer version 9.0.1. This
 library is covered by the LGPL version 2.1 (see LGPL-2.1.txt) and its source
 code is available at
 https://github.com/flyingsaucerproject/flyingsaucer or
-https://code.google.com/p/flying-saucer/.
+https://code.google.com/p/flying-saucer/
 
 =================== Beginning of License Information ===================
 
@@ -915,44 +912,6 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 --------------------------------------------------------------------------------
 
 
-The license below pertains to JUnit 4.8.1.
-
-=================== Beginning of License ===================
-
-BSD License
-
-Copyright (c) 2000-2006, www.hamcrest.org
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-
-Redistributions of source code must retain the above copyright notice, this list of
-conditions and the following disclaimer. Redistributions in binary form must reproduce
-the above copyright notice, this list of conditions and the following disclaimer in
-the documentation and/or other materials provided with the distribution.
-
-Neither the name of Hamcrest nor the names of its contributors may be used to endorse
-or promote products derived from this software without specific prior written
-permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
-EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
-OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT
-SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
-INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
-TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
-BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY
-WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
-DAMAGE.
-
-=================== End of License =========================
-
-
---------------------------------------------------------------------------------
-
-
 The license below pertains to JGoodies Looks version 2.3.1.
 
 =================== Beginning of License ===================
@@ -1263,48 +1222,6 @@ The OSHI library is licensed under the Eclipse Public License version 1.0. A
 copy of this license is available in the file named EPL-1.0.txt.
 
 The source code for OSHI is available at: https://github.com/oshi/oshi
-
-
---------------------------------------------------------------------------------
-
-
-The JaCoCo Java Code Coverage Library version 0.8.2 is licensed under the
-Eclipse Public License version 1.0. A copy of this license is available in the
-file named EPL-1.0.txt.
-
-The source code for the JaCoCo Java Code Coverage Library is available at
-https://github.com/jacoco/jacoco/.
-
-
---------------------------------------------------------------------------------
-
-
-The license below pertains to the args4j library.
-
-=================== Beginning of License Information ===================
-
-Copyright (c) 2003-2016 by Kohsuke Kawaguchi
-https://github.com/kohsuke/args4j
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-
-=================== End of License Information ===================
 
 
 --------------------------------------------------------------------------------
