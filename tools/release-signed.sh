@@ -39,7 +39,7 @@
 #
 # Env overrides:
 #   MEDIA_IDS           install4j media ids (default: Windows + Linux, no-JRE + with-JRE)
-#   INSTALL4JC          path to install4jc (default: ~/opt/install4j13.1/bin/install4jc). It
+#   INSTALL4JC          path to install4jc (default: ~/opt/install4j13.1.1/bin/install4jc). It
 #                       must be at least the install4j version that saved the config
 #   ALLOW_OLDER_INSTALL4J=1  build with an older install4jc anyway
 #   RELEASE_VERSION     the version to ship, e.g. RELEASE_VERSION=4.7.0-1. Required
@@ -58,7 +58,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-INSTALL4JC="${INSTALL4JC:-$HOME/opt/install4j13.1/bin/install4jc}"
+INSTALL4JC="${INSTALL4JC:-$HOME/opt/install4j13.1.1/bin/install4jc}"
 CONFIG="$REPO_ROOT/tools/install4j/oie-installer-config.install4j"
 SETUP="$REPO_ROOT/server/setup"
 BUILD_OUT="$REPO_ROOT/server/build"
