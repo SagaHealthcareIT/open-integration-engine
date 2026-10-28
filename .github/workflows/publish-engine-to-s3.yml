@@ -10,6 +10,16 @@ name: Publish Engine to S3
 # a normal app — there is NO CI build step and NO fast dev channel. This
 # workflow only moves the already-signed release assets into the dev bucket.
 #
+# A second job publishes the OpenShare Administrator Launcher when the release
+# carries it (openshare-launcher_* assets, attached with openshare-launcher's
+# tools/attach-to-engine-release.sh): launcher/<version>/ plus
+# launcher/latest/manifest.json, which the console's launcher download
+# (contact-system-api /v1/installers/launcher) reads. It runs after the engine
+# job and on its own, so a launcher problem never blocks an engine publish. A
+# release without launcher assets leaves launcher/ alone. launcher/latest
+# follows the last publish that carried a launcher, so republishing an older
+# release with an older launcher moves it back.
+#
 # The prod sibling is publish-engine-to-s3-prod.yml. Env isolation is enforced
 # at the IAM trust: each env's mdds-llm-${env}-engine-publisher role pins OIDC
 # job_workflow_ref to its own workflow file, so a dev dispatch physically
@@ -206,5 +216,138 @@ jobs:
           aws s3 cp manifest.json "s3://${BUCKET}/engine/${TAG}/manifest.json" \
             --content-type application/json
           aws s3 cp manifest.json "s3://${BUCKET}/engine/latest/manifest.json" \
+            --content-type application/json \
+            --cache-control "no-cache, max-age=60"
+
+  launcher:
+    name: Upload the Administrator Launcher + manifest to S3 (dev)
+    needs: publish
+    runs-on: ubuntu-latest
+
+    steps:
+      # The launcher's files on the release: the three media, their .sha256
+      # sidecars and openshare-launcher_build-info.txt (its build-info.txt).
+      - name: Download launcher media (if attached)
+        id: launcher
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          n=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+                --jq '[.assets[].name | select(startswith("openshare-launcher_"))] | length')
+          if [ "$n" -eq 0 ]; then
+            echo "No launcher assets on $TAG; launcher/ is left as it is."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mkdir -p launcher
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'openshare-launcher_*' --dir launcher
+          echo "Downloaded:"; ls -la launcher/
+          echo "present=true" >> "$GITHUB_OUTPUT"
+
+      # Checked before anything is uploaded: a signed release build from a
+      # clean commit, every media file of that build and nothing else, each
+      # non-empty and matching its .sha256 sidecar.
+      - name: Build launcher manifest
+        id: launcher_manifest
+        if: steps.launcher.outputs.present == 'true'
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          cd launcher
+          info=openshare-launcher_build-info.txt
+          [ -f "$info" ] || { echo "Launcher assets on $TAG but no $info"; exit 1; }
+          field() { grep -E "^$1=" "$info" | head -1 | cut -d= -f2- | tr -d '\r' || true; }
+          LVER=$(field version)
+          LCOMMIT=$(field commit)
+          BUILT=$(field built_utc)
+          [[ "$LVER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Launcher version '$LVER' is not a release version"; exit 1; }
+          [[ "$LCOMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "$info has no valid commit"; exit 1; }
+          [[ "$BUILT" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || { echo "$info has no valid built_utc"; exit 1; }
+          [ "$(field signed)" = true ] || { echo "The launcher build is not signed"; exit 1; }
+          [ "$(field uncommitted_changes)" = false ] || { echo "The launcher was built with uncommitted changes"; exit 1; }
+          [ "$(field media_ids)" = all ] || { echo "The launcher build did not build every media file"; exit 1; }
+
+          # install4j writes the version with underscores.
+          v=${LVER//./_}
+          expected=(
+            "openshare-launcher_windows-x64_${v}.exe"
+            "openshare-launcher_linux-x64_${v}.sh"
+            "openshare-launcher_linux-x64_${v}.tar.gz"
+          )
+          for f in openshare-launcher_*; do
+            ok=false
+            [ "$f" = "$info" ] && ok=true
+            for e in "${expected[@]}"; do
+              if [ "$f" = "$e" ] || [ "$f" = "$e.sha256" ]; then ok=true; fi
+            done
+            [ "$ok" = true ] || { echo "Unexpected launcher asset $f (version $LVER)"; exit 1; }
+          done
+
+          : > media.jsonl
+          for f in "${expected[@]}"; do
+            [ -s "$f" ] || { echo "Missing or empty launcher media $f"; exit 1; }
+            [ -f "$f.sha256" ] || { echo "Missing checksum sidecar for $f"; exit 1; }
+            sha=$(sha256sum "$f" | awk '{print $1}')
+            [ "$(awk '{print $1}' "$f.sha256")" = "$sha" ] || { echo "sha256 mismatch for $f"; exit 1; }
+            case "$f" in
+              *windows*) os=windows;;
+              *) os=linux;;
+            esac
+            case "$f" in
+              *.tar.gz) format=archive;;
+              *) format=installer;;
+            esac
+            jq -n -c \
+              --arg filename "$f" \
+              --arg os "$os" \
+              --arg format "$format" \
+              --arg downloadKey "launcher/${LVER}/$f" \
+              --argjson sizeBytes "$(stat -c %s "$f")" \
+              --arg sha256 "$sha" \
+              '{filename:$filename, os:$os, arch:"x64", format:$format, downloadKey:$downloadKey, sizeBytes:$sizeBytes, sha256:$sha256}' \
+              >> media.jsonl
+          done
+
+          # releasedAt is when the launcher was built, so republishing doesn't re-date it.
+          jq -s \
+            --arg launcherVersion "$LVER" \
+            --arg releasedAt "$BUILT" \
+            --arg sourceTag "$TAG" \
+            --arg launcherCommit "$LCOMMIT" \
+            '{schemaVersion:1, launcherVersion:$launcherVersion, releasedAt:$releasedAt, sourceTag:$sourceTag, launcherCommit:$launcherCommit, media:.}' \
+            media.jsonl > manifest.json
+          echo "----- launcher manifest.json -----"; cat manifest.json
+          echo "version=$LVER" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials via OIDC
+        if: steps.launcher.outputs.present == 'true'
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ENGINE_PUBLISHER_ROLE_ARN }}
+          aws-region: us-east-1
+
+      # The media first, then the per-version manifest (audit), then the latest
+      # pointer the console reads. Each object carries its sha256 as metadata;
+      # the download refuses bytes whose metadata doesn't match the manifest.
+      - name: Publish the launcher
+        if: steps.launcher.outputs.present == 'true'
+        env:
+          BUCKET: ${{ secrets.AWS_ENGINE_ARTIFACTS_BUCKET }}
+          TAG: ${{ inputs.tag }}
+          LVER: ${{ steps.launcher_manifest.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd launcher
+          jq -r '.media[] | "\(.filename) \(.sha256)"' manifest.json | while read -r f sha; do
+            aws s3 cp "$f" "s3://${BUCKET}/launcher/${LVER}/$f" \
+              --metadata "version=${LVER},tag=${TAG},sha256=${sha},signed=true"
+          done
+          aws s3 cp manifest.json "s3://${BUCKET}/launcher/${LVER}/manifest.json" \
+            --content-type application/json
+          aws s3 cp manifest.json "s3://${BUCKET}/launcher/latest/manifest.json" \
             --content-type application/json \
             --cache-control "no-cache, max-age=60"
