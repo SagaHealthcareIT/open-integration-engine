@@ -18,6 +18,20 @@ name: Publish Engine to S3 (prod)
 # Prod reuses the SAME signed media as dev; only the
 # target bucket/role differ.
 #
+# With publish_launcher, the run also publishes the OpenShare Administrator
+# Launcher attached to the release (openshare-launcher_* assets, see the dev
+# workflow) to launcher/<version>/ and launcher/latest/manifest.json, which the
+# console's launcher download reads. It is opt-in so an engine re-publish or
+# rollback never moves the prod launcher by accident. Its build must be tagged
+# v<version> at the commit in openshare-launcher_build-info.txt and that commit
+# must be on openshare-launcher's develop (read with the change-gate App, which
+# must be installed on openshare-launcher). The launcher's release assets
+# (names and digests) are pinned before anything else runs, so files swapped on
+# the release mid-run are refused. Media go up before either manifest flips.
+# For now it runs only while change control is paused: openshare-launcher has
+# no release branch, so the change gate has no release PR to find for it, and
+# a ticketed launcher publish needs that branch first.
+#
 # A prod publish is a prod change: the run must name a change-control ticket,
 # approved as the change policy requires, that lists the commit the media
 # were built from (openshare_commit in the release's BUNDLED_PLUGIN.txt), and
@@ -58,6 +72,11 @@ on:
         description: 'change-control issue number approving this publish. Its artifacts field must list SagaHealthcareIT/open-integration-engine-internal@<openshare_commit from the release''s BUNDLED_PLUGIN.txt> (the private repo, not the public mirror). Leave empty only while the org variable CHANGE_CONTROL_PAUSED is true.'
         required: false
         type: string
+      publish_launcher:
+        description: 'Also publish the OpenShare Administrator Launcher attached to this release (openshare-launcher_* assets) to launcher/latest. Off: launcher/ is left as it is. Only while change control is paused (CHANGE_CONTROL_PAUSED=true) for now.'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   id-token: write   # OIDC role assumption
@@ -144,6 +163,88 @@ jobs:
             || { echo "Tag $TAG is $TAG_SHA, but the media were built from $BUILT_FROM"; exit 1; }
           echo "built_from=$BUILT_FROM" >> "$GITHUB_OUTPUT"
 
+      # Only with publish_launcher: the launcher build this run would publish,
+      # read and checked before any gate or download. The release's launcher
+      # assets (names + digests) are pinned here; the download must match them.
+      - name: Read launcher provenance
+        id: launcher_provenance
+        if: inputs.publish_launcher
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          PAUSED: ${{ steps.cc.outputs.paused }}
+        run: |
+          set -euo pipefail
+          if [ "$PAUSED" != true ]; then
+            echo "publish_launcher needs change control paused for now: openshare-launcher has no release branch, so the change gate can't check it. Publish the engine without it."
+            exit 1
+          fi
+          mkdir -p launcher-provenance
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[] | select(.name | startswith("openshare-launcher_")) | "\(.name)\t\(.digest // "")"' \
+            | sort > launcher-provenance/assets.tsv
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'openshare-launcher_build-info.txt' --dir launcher-provenance \
+            || { echo "publish_launcher is set, but $TAG has no openshare-launcher_build-info.txt"; exit 1; }
+          info=launcher-provenance/openshare-launcher_build-info.txt
+          field() { grep -E "^$1=" "$info" | head -1 | cut -d= -f2- | tr -d '\r' || true; }
+          LVER=$(field version)
+          LCOMMIT=$(field commit)
+          [[ "$LVER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Launcher version '$LVER' is not a release version"; exit 1; }
+          [[ "$LCOMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "$info has no valid commit"; exit 1; }
+          [ "$(field signed)" = true ] || { echo "The launcher build is not signed"; exit 1; }
+          [ "$(field uncommitted_changes)" = false ] || { echo "The launcher was built with uncommitted changes"; exit 1; }
+
+          # Exactly this build's set on the release, each with a digest, and the
+          # build-info read here is the one listed.
+          v=${LVER//./_}
+          printf '%s\n' \
+            "openshare-launcher_build-info.txt" \
+            "openshare-launcher_windows-x64_${v}.exe" "openshare-launcher_windows-x64_${v}.exe.sha256" \
+            "openshare-launcher_linux-x64_${v}.sh" "openshare-launcher_linux-x64_${v}.sh.sha256" \
+            "openshare-launcher_linux-x64_${v}.tar.gz" "openshare-launcher_linux-x64_${v}.tar.gz.sha256" \
+            | sort > launcher-provenance/expected.txt
+          cut -f1 launcher-provenance/assets.tsv | diff launcher-provenance/expected.txt - \
+            || { echo "The launcher assets on $TAG are not exactly launcher ${LVER}'s set (diff above)"; exit 1; }
+          if awk -F'\t' '$2 !~ /^sha256:[0-9a-f]{64}$/' launcher-provenance/assets.tsv | grep -q .; then
+            echo "A launcher asset on $TAG has no sha256 digest"; exit 1
+          fi
+          listed=$(awk -F'\t' '$1 == "openshare-launcher_build-info.txt" { print $2 }' launcher-provenance/assets.tsv)
+          [ "$listed" = "sha256:$(sha256sum "$info" | cut -d' ' -f1)" ] \
+            || { echo "openshare-launcher_build-info.txt changed while it was read"; exit 1; }
+          echo "version=$LVER" >> "$GITHUB_OUTPUT"
+          echo "commit=$LCOMMIT" >> "$GITHUB_OUTPUT"
+
+      # openshare-launcher is private, so it is read with the change-gate App.
+      - name: Mint launcher token
+        id: app_launcher
+        if: inputs.publish_launcher
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.CHANGE_GATE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CHANGE_GATE_APP_KEY }}
+          owner: SagaHealthcareIT
+          repositories: openshare-launcher
+
+      # Whether or not change control is paused: the launcher's release tag is
+      # at the commit it was built from, and that commit is on develop.
+      - name: Launcher built from its tagged develop commit
+        if: inputs.publish_launcher
+        env:
+          GH_TOKEN: ${{ steps.app_launcher.outputs.token }}
+          LVER: ${{ steps.launcher_provenance.outputs.version }}
+          LCOMMIT: ${{ steps.launcher_provenance.outputs.commit }}
+        run: |
+          set -euo pipefail
+          repo=SagaHealthcareIT/openshare-launcher
+          tag_sha=$(gh api "repos/${repo}/commits/refs/tags/v${LVER}" --jq .sha)
+          [ "$tag_sha" = "$LCOMMIT" ] \
+            || { echo "Launcher tag v${LVER} is ${tag_sha}, but the build came from ${LCOMMIT}"; exit 1; }
+          st=$(gh api "repos/${repo}/compare/develop...${LCOMMIT}?per_page=1" --jq .status)
+          [[ "$st" == identical || "$st" == behind ]] \
+            || { echo "Launcher commit ${LCOMMIT} is not on develop (${st})"; exit 1; }
+          echo "Launcher ${LVER} was built from ${LCOMMIT}: tagged v${LVER}, on develop"
+
       # TEMPORARY switch (see the header). With no change gate (whose ticket links the
       # reviewed PR that shipped the commit), check here that the media were built
       # from a commit on one of the release lines.
@@ -214,6 +315,104 @@ jobs:
           media=(release/openshare_*)
           real=0; for f in "${media[@]}"; do case "$f" in *.sha256) ;; *) real=$((real+1));; esac; done
           [ "$real" -ge 1 ] || { echo "No installer media on release $TAG"; exit 1; }
+
+      - name: Download launcher media
+        if: inputs.publish_launcher
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p launcher
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'openshare-launcher_*' --dir launcher
+          echo "Downloaded:"; ls -la launcher/
+          # The same files, byte for byte, as pinned before the checks: nothing
+          # added, removed or replaced on the release since.
+          (cd launcher && ls -1 openshare-launcher_*) | sort \
+            | diff <(cut -f1 launcher-provenance/assets.tsv) - \
+            || { echo "The launcher assets on $TAG changed since they were pinned"; exit 1; }
+          while IFS=$'\t' read -r name digest; do
+            [ "sha256:$(sha256sum "launcher/$name" | cut -d' ' -f1)" = "$digest" ] \
+              || { echo "$name changed since it was pinned"; exit 1; }
+          done < launcher-provenance/assets.tsv
+          cmp launcher-provenance/openshare-launcher_build-info.txt launcher/openshare-launcher_build-info.txt
+
+      # Checked before anything is uploaded: a signed release build from a
+      # clean commit, every media file of that build and nothing else, each
+      # non-empty and matching its .sha256 sidecar.
+      - name: Build launcher manifest
+        id: launcher_manifest
+        if: inputs.publish_launcher
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          cd launcher
+          info=openshare-launcher_build-info.txt
+          [ -f "$info" ] || { echo "Launcher assets on $TAG but no $info"; exit 1; }
+          field() { grep -E "^$1=" "$info" | head -1 | cut -d= -f2- | tr -d '\r' || true; }
+          LVER=$(field version)
+          LCOMMIT=$(field commit)
+          BUILT=$(field built_utc)
+          [[ "$LVER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Launcher version '$LVER' is not a release version"; exit 1; }
+          [[ "$LCOMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "$info has no valid commit"; exit 1; }
+          [[ "$BUILT" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || { echo "$info has no valid built_utc"; exit 1; }
+          [ "$(field signed)" = true ] || { echo "The launcher build is not signed"; exit 1; }
+          [ "$(field uncommitted_changes)" = false ] || { echo "The launcher was built with uncommitted changes"; exit 1; }
+          [ "$(field media_ids)" = all ] || { echo "The launcher build did not build every media file"; exit 1; }
+
+          # install4j writes the version with underscores.
+          v=${LVER//./_}
+          expected=(
+            "openshare-launcher_windows-x64_${v}.exe"
+            "openshare-launcher_linux-x64_${v}.sh"
+            "openshare-launcher_linux-x64_${v}.tar.gz"
+          )
+          for f in openshare-launcher_*; do
+            ok=false
+            [ "$f" = "$info" ] && ok=true
+            for e in "${expected[@]}"; do
+              if [ "$f" = "$e" ] || [ "$f" = "$e.sha256" ]; then ok=true; fi
+            done
+            [ "$ok" = true ] || { echo "Unexpected launcher asset $f (version $LVER)"; exit 1; }
+          done
+
+          : > media.jsonl
+          for f in "${expected[@]}"; do
+            [ -s "$f" ] || { echo "Missing or empty launcher media $f"; exit 1; }
+            [ -f "$f.sha256" ] || { echo "Missing checksum sidecar for $f"; exit 1; }
+            sha=$(sha256sum "$f" | awk '{print $1}')
+            [ "$(awk '{print $1}' "$f.sha256")" = "$sha" ] || { echo "sha256 mismatch for $f"; exit 1; }
+            case "$f" in
+              *windows*) os=windows;;
+              *) os=linux;;
+            esac
+            case "$f" in
+              *.tar.gz) format=archive;;
+              *) format=installer;;
+            esac
+            jq -n -c \
+              --arg filename "$f" \
+              --arg os "$os" \
+              --arg format "$format" \
+              --arg downloadKey "launcher/${LVER}/$f" \
+              --argjson sizeBytes "$(stat -c %s "$f")" \
+              --arg sha256 "$sha" \
+              '{filename:$filename, os:$os, arch:"x64", format:$format, downloadKey:$downloadKey, sizeBytes:$sizeBytes, sha256:$sha256}' \
+              >> media.jsonl
+          done
+
+          # releasedAt is when the launcher was built, so republishing doesn't re-date it.
+          jq -s \
+            --arg launcherVersion "$LVER" \
+            --arg releasedAt "$BUILT" \
+            --arg sourceTag "$TAG" \
+            --arg launcherCommit "$LCOMMIT" \
+            '{schemaVersion:1, launcherVersion:$launcherVersion, releasedAt:$releasedAt, sourceTag:$sourceTag, launcherCommit:$launcherCommit, media:.}' \
+            media.jsonl > manifest.json
+          echo "----- launcher manifest.json -----"; cat manifest.json
+          echo "version=$LVER" >> "$GITHUB_OUTPUT"
 
       - name: Build manifest.json
         id: manifest
@@ -337,6 +536,21 @@ jobs:
               --metadata "version=${version},tag=${TAG},sha256=${sha},signed=true"
           done
 
+      # Before either manifest flips, so a failed launcher upload leaves prod as it was.
+      - name: Upload launcher media to S3
+        if: inputs.publish_launcher
+        env:
+          BUCKET: ${{ secrets.AWS_ENGINE_ARTIFACTS_BUCKET_PROD }}
+          TAG: ${{ inputs.tag }}
+          LVER: ${{ steps.launcher_manifest.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd launcher
+          jq -r '.media[] | "\(.filename) \(.sha256)"' manifest.json | while read -r f sha; do
+            aws s3 cp "$f" "s3://${BUCKET}/launcher/${LVER}/$f" \
+              --metadata "version=${LVER},tag=${TAG},sha256=${sha},signed=true"
+          done
+
       - name: Publish manifests
         env:
           BUCKET: ${{ secrets.AWS_ENGINE_ARTIFACTS_BUCKET_PROD }}
@@ -352,6 +566,20 @@ jobs:
           aws s3 cp manifest.json "s3://${BUCKET}/engine/${TAG}/manifest.json" \
             --content-type application/json
           aws s3 cp manifest.json "s3://${BUCKET}/engine/latest/manifest.json" \
+            --content-type application/json \
+            --cache-control "no-cache, max-age=60"
+
+      - name: Publish launcher manifests
+        if: inputs.publish_launcher
+        env:
+          BUCKET: ${{ secrets.AWS_ENGINE_ARTIFACTS_BUCKET_PROD }}
+          LVER: ${{ steps.launcher_manifest.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd launcher
+          aws s3 cp manifest.json "s3://${BUCKET}/launcher/${LVER}/manifest.json" \
+            --content-type application/json
+          aws s3 cp manifest.json "s3://${BUCKET}/launcher/latest/manifest.json" \
             --content-type application/json \
             --cache-control "no-cache, max-age=60"
 
@@ -374,9 +602,13 @@ jobs:
           TICKET: ${{ inputs.ticket }}
           TAG: ${{ inputs.tag }}
           BUILT_FROM: ${{ steps.provenance.outputs.built_from }}
+          LVER: ${{ steps.launcher_manifest.outputs.version }}
+          LCOMMIT: ${{ steps.launcher_provenance.outputs.commit }}
         run: |
+          launcher=""
+          if [ -n "$LVER" ]; then launcher=" and launcher ${LVER} (openshare-launcher@${LCOMMIT}) to launcher/latest/manifest.json"; fi
           gh issue comment "$TICKET" --repo SagaHealthcareIT/change-control --body \
-            "Published ${TAG} (built from ${BUILT_FROM}) to prod S3 (engine/latest/manifest.json) by @${GITHUB_TRIGGERING_ACTOR}. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            "Published ${TAG} (built from ${BUILT_FROM}) to prod S3 (engine/latest/manifest.json)${launcher} by @${GITHUB_TRIGGERING_ACTOR}. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           gh issue edit "$TICKET" --repo SagaHealthcareIT/change-control --add-label deployed
 
       # A run that passed the gate and then failed may have changed prod
@@ -398,5 +630,9 @@ jobs:
         env:
           TAG: ${{ inputs.tag }}
           BUILT_FROM: ${{ steps.provenance.outputs.built_from }}
+          LVER: ${{ steps.launcher_manifest.outputs.version }}
+          LCOMMIT: ${{ steps.launcher_provenance.outputs.commit }}
         run: |
-          echo "Published ${TAG} (built from ${BUILT_FROM}) to prod S3 (engine/latest/manifest.json) by @${GITHUB_TRIGGERING_ACTOR}; change control paused, no change ticket." >> "$GITHUB_STEP_SUMMARY"
+          launcher=""
+          if [ -n "$LVER" ]; then launcher=" and launcher ${LVER} (openshare-launcher@${LCOMMIT}) to launcher/latest/manifest.json"; fi
+          echo "Published ${TAG} (built from ${BUILT_FROM}) to prod S3 (engine/latest/manifest.json)${launcher} by @${GITHUB_TRIGGERING_ACTOR}; change control paused, no change ticket." >> "$GITHUB_STEP_SUMMARY"
