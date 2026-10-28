@@ -32,6 +32,18 @@ name: Publish Engine to S3 (prod)
 # `production` environment only after that trust accepts both forms
 # (docs/soc2/change-control-design.md, addendum 2026-09-24). The gate's App
 # credentials are org-level, so they work without the environment.
+#
+# TEMPORARY switch, added 2026-10-27 while SOC 2 is paused; remove it (every
+# line that mentions CHANGE_CONTROL_PAUSED or steps.cc) when change control
+# resumes. When the org Actions variable CHANGE_CONTROL_PAUSED is exactly
+# `true`, a publish needs no ticket: the `ticket` input is not required (and is
+# ignored), and the run mints no change-gate token, runs no gate and comments
+# on and labels no ticket; the result goes to the run summary. Still enforced:
+# dispatch from openshare, the tag format, the provenance marker with the tag's
+# commit equal to openshare_commit, the sha256 sidecar checks, and the OIDC
+# trust; and, in place of the gate's linked PR, that commit must be on openshare
+# or release/4.6. Unset, or any other value, is the ticketed publish described
+# above, unchanged.
 
 on:
   workflow_dispatch:
@@ -41,8 +53,10 @@ on:
         required: true
         type: string
       ticket:
-        description: 'change-control issue number approving this publish. Its artifacts field must list SagaHealthcareIT/open-integration-engine-internal@<openshare_commit from the release''s BUNDLED_PLUGIN.txt> (the private repo, not the public mirror).'
-        required: true
+        # Not required by the form so a publish works while change control is
+        # paused; "Validate ticket input" still refuses a run without one when it is not.
+        description: 'change-control issue number approving this publish. Its artifacts field must list SagaHealthcareIT/open-integration-engine-internal@<openshare_commit from the release''s BUNDLED_PLUGIN.txt> (the private repo, not the public mirror). Leave empty only while the org variable CHANGE_CONTROL_PAUSED is true.'
+        required: false
         type: string
 
 permissions:
@@ -64,6 +78,25 @@ jobs:
         run: |
           [[ "$GITHUB_REF" == refs/heads/openshare ]] || { echo "Dispatch this workflow from openshare, not $GITHUB_REF"; exit 1; }
 
+      # TEMPORARY switch (see the header). Exactly "true" pauses the ticket
+      # steps; anything else, including unset, keeps them. Later steps test
+      # steps.cc.outputs.paused, which is exactly "true" or "false" (an
+      # expression comparison would be case-insensitive).
+      - name: Change control switch
+        id: cc
+        env:
+          CHANGE_CONTROL_PAUSED: ${{ vars.CHANGE_CONTROL_PAUSED }}
+          TICKET: ${{ inputs.ticket }}
+        run: |
+          if [[ "${CHANGE_CONTROL_PAUSED:-}" == "true" ]]; then
+            echo "paused=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Change control paused (org variable CHANGE_CONTROL_PAUSED): no change ticket checked"
+            echo "Change control paused (org variable CHANGE_CONTROL_PAUSED): no change ticket checked." >> "$GITHUB_STEP_SUMMARY"
+            [[ -z "$TICKET" ]] || echo "::notice::input 'ticket' ignored: change control is paused"
+          else
+            echo "paused=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Validate tag input
         env:
           TAG: ${{ inputs.tag }}
@@ -80,6 +113,7 @@ jobs:
           echo "version=${TAG#openshare-v}" >> "$GITHUB_ENV"
 
       - name: Validate ticket input
+        if: steps.cc.outputs.paused != 'true'
         env:
           TICKET: ${{ inputs.ticket }}
         run: |
@@ -110,8 +144,27 @@ jobs:
             || { echo "Tag $TAG is $TAG_SHA, but the media were built from $BUILT_FROM"; exit 1; }
           echo "built_from=$BUILT_FROM" >> "$GITHUB_OUTPUT"
 
+      # TEMPORARY switch (see the header). With no change gate (whose ticket links the
+      # reviewed PR that shipped the commit), check here that the media were built
+      # from a commit on one of the release lines.
+      - name: Built from a release branch (change control paused)
+        if: steps.cc.outputs.paused == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILT_FROM: ${{ steps.provenance.outputs.built_from }}
+        run: |
+          set -euo pipefail
+          for b in openshare release/4.6; do
+            st=$(gh api "repos/${GITHUB_REPOSITORY}/compare/${b}...${BUILT_FROM}?per_page=1" --jq .status 2>/dev/null || true)
+            if [[ "$st" == identical || "$st" == behind ]]; then
+              echo "Built from ${BUILT_FROM}, which is on ${b}"; exit 0
+            fi
+          done
+          echo "The media were built from ${BUILT_FROM}, which is not on openshare or release/4.6"; exit 1
+
       - name: Mint change-gate token
         id: app
+        if: steps.cc.outputs.paused != 'true'
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           client-id: ${{ vars.CHANGE_GATE_APP_CLIENT_ID }}
@@ -132,6 +185,7 @@ jobs:
       # and mirthWebApp prod deploy pipelines pin; re-pin them together.
       - name: Change gate
         id: gate
+        if: steps.cc.outputs.paused != 'true'
         uses: SagaHealthcareIT/change-control/.github/actions/change-gate@b54809ca03bc3f83aa828022b214d49937f0ba31
         with:
           token: ${{ steps.app.outputs.token }}
@@ -314,7 +368,7 @@ jobs:
           repositories: change-control
 
       - name: Record the release on the ticket
-        if: success()
+        if: success() && steps.cc.outputs.paused != 'true'
         env:
           GH_TOKEN: ${{ steps.app_record.outputs.token }}
           TICKET: ${{ inputs.ticket }}
@@ -336,3 +390,13 @@ jobs:
         run: |
           gh issue comment "$TICKET" --repo SagaHealthcareIT/change-control --body \
             "Publishing ${TAG} to prod S3 (engine/latest/manifest.json) FAILED after the change gate passed; the destination may be partly updated. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+      # TEMPORARY switch (see the header): with no ticket, the record goes to the
+      # run summary. On a failure, the run's own status is the record.
+      - name: Record the release in the run summary (change control paused)
+        if: success() && steps.cc.outputs.paused == 'true'
+        env:
+          TAG: ${{ inputs.tag }}
+          BUILT_FROM: ${{ steps.provenance.outputs.built_from }}
+        run: |
+          echo "Published ${TAG} (built from ${BUILT_FROM}) to prod S3 (engine/latest/manifest.json) by @${GITHUB_TRIGGERING_ACTOR}; change control paused, no change ticket." >> "$GITHUB_STEP_SUMMARY"
