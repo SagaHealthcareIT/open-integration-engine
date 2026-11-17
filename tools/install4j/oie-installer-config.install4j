@@ -5,7 +5,7 @@
       <variable name="installer:mediaRoot" value="../.." />
     </variables>
     <codeSigning windowsEnabled="true" windowsKeySource="pkcs11" windowsPkcs11Library="/usr/lib64/opensc-pkcs11.so" windowsPkcs11Slot="1" windowsCertDir="${compiler:installer:mediaRoot}/tools/install4j/signing-chain" />
-    <jreBundles jdkProviderId="Zulu" release="21/21.0.12">
+    <jreBundles jdkProviderId="Zulu" release="21/21.0.13.1">
       <modules>
         <defaultModules set="all" />
       </modules>
