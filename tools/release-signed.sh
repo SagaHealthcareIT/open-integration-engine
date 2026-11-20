@@ -146,6 +146,19 @@ esac
 
 echo "==> Version: $RELEASE_VERSION (upstream $UPSTREAM_TAG @ ${UPSTREAM_COMMIT:0:9}, openshare @ ${OPENSHARE_COMMIT:0:9})"
 echo "==> Building media: $MEDIA_IDS"
+
+# The with-JRE media for Windows x64 (121), Linux (125) and macOS (130, 133) embed pre-created bundles
+# of Zulu 21.0.13.1 with JavaFX, built from Azul's CDN files at pinned sha256s; the script says why.
+# Built before the long engine build, so a failed download or checksum stops the release early.
+BUNDLE_PLATFORMS=()
+case ",$MEDIA_IDS," in *,121,*) BUNDLE_PLATFORMS+=( windows-amd64 ) ;; esac
+case ",$MEDIA_IDS," in *,125,*) BUNDLE_PLATFORMS+=( linux-amd64 ) ;; esac
+case ",$MEDIA_IDS," in *,130,*) BUNDLE_PLATFORMS+=( macos-aarch64 ) ;; esac
+case ",$MEDIA_IDS," in *,133,*) BUNDLE_PLATFORMS+=( macos-amd64 ) ;; esac
+if [ "${#BUNDLE_PLATFORMS[@]}" -gt 0 ]; then
+  echo "==> JRE bundles: ${BUNDLE_PLATFORMS[*]} (tools/install4j/make-zulu-fx-bundles.sh)"
+  "$REPO_ROOT/tools/install4j/make-zulu-fx-bundles.sh" "${BUNDLE_PLATFORMS[@]}"
+fi
 read -rsp "eToken PIN: " TOKEN_PIN; echo
 export TOKEN_PIN
 
