@@ -5,6 +5,11 @@
       <variable name="installer:mediaRoot" value="../.." />
     </variables>
     <codeSigning windowsEnabled="true" windowsKeySource="pkcs11" windowsPkcs11Library="/usr/lib64/opensc-pkcs11.so" windowsPkcs11Slot="1" windowsCertDir="${compiler:installer:mediaRoot}/tools/install4j/signing-chain" />
+    <!-- Media 121, 125, 130 and 133 (with JRE: Windows x64, Linux, macOS ARM and Intel) embed pre-created
+         bundles of Zulu 21.0.13.1 with JavaFX (Zulu21.54+201-CA, the CVE-2026-114938 fix), built by
+         tools/install4j/make-zulu-fx-bundles.sh: Azul's catalogue lists only the non-FX packages of that
+         build, and this provider would bundle one of those. Windows ARM (136) has no FX build and stays
+         on the provider. Once Azul lists the FX packages, drop the preCreated attributes and the script. -->
     <jreBundles jdkProviderId="Zulu" release="21/21.0.13.1">
       <modules>
         <defaultModules set="all" />
@@ -913,16 +918,16 @@ return console.askYesNo(message, true);
       <jreBundle jreBundleSource="none" />
     </windows>
     <windows name="Windows x64-with-JRE" id="121" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-with-JRE" installDir="OpenShareEngine" architecture="64">
-      <jreBundle usePack200="false" />
+      <jreBundle usePack200="false" jreBundleSource="preCreated" includedJre="${compiler:installer:mediaRoot}/tools/install4j/jre-bundles/windows-amd64-21.0.13.1.tar.gz" manualJreEntry="true" />
     </windows>
     <unixInstaller name="Unix Installer-with-JRE" id="125" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-with-JRE" installDir="OpenShareEngine">
-      <jreBundle usePack200="false" />
+      <jreBundle usePack200="false" jreBundleSource="preCreated" includedJre="${compiler:installer:mediaRoot}/tools/install4j/jre-bundles/linux-amd64-21.0.13.1.tar.gz" manualJreEntry="true" />
     </unixInstaller>
     <macosFolder name="macOS Folder - ARM-with-JRE" id="130" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-aarch-with-JRE" installDir="OpenShareEngine">
-      <jreBundle usePack200="false" />
+      <jreBundle usePack200="false" jreBundleSource="preCreated" includedJre="${compiler:installer:mediaRoot}/tools/install4j/jre-bundles/macos-aarch64-21.0.13.1.tar.gz" manualJreEntry="true" />
     </macosFolder>
     <macosFolder name="macOS Folder - Intel-with-JRE" id="133" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-x86-with-JRE" installDir="OpenShareEngine" architecture="amd64">
-      <jreBundle usePack200="false" />
+      <jreBundle usePack200="false" jreBundleSource="preCreated" includedJre="${compiler:installer:mediaRoot}/tools/install4j/jre-bundles/macos-amd64-21.0.13.1.tar.gz" manualJreEntry="true" />
     </macosFolder>
     <windows name="Windows ARM-with-JRE" id="136" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}-with-JRE" installDir="OpenShareEngine" architecture="arm64" />
     <windowsArchive name="Windows x64 Archive" id="153" mediaFileName="openshare_${compiler:sys.platform}_${compiler:sys.version}" installDir="OpenShareEngine" architecture="64">

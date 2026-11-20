@@ -664,3 +664,5 @@ dependency-check-report.json
 
 # compiled output of the manual (non-CI) checks
 client/manual-checks/**/out/
+# Pre-created install4j JRE bundles, built by tools/install4j/make-zulu-fx-bundles.sh
+/tools/install4j/jre-bundles/
